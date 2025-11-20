@@ -1,0 +1,15 @@
+[package] # CLIクレート自体のメタデータ定義
+name = "dfuji-cli" # CLIバイナリのクレート名
+version = "0.1.0"  # CLIのバージョン（ワークスペース内で任意に設定）
+edition = "2024"   # Rustエディション。ライブラリに合わせて2024を採用
+
+[dependencies] # CLIで利用する依存クレート
+clap = { version = "^4.5", features = ["derive"] } # コマンドライン引数処理のためにclapを導入
+tracing = "^0.1.41" # ログ出力用にライブラリと同じtracingを使用
+tracing-subscriber = { version = "^0.3.20", features = [
+    "fmt",
+    "env-filter",
+] } # tracingログを表示するためのサブスクライバ
+chrono = "^0.4.42" # 結果表示やフォーマットで日時を扱うための補助（必要に応じて利用）
+dfuji = { path = "../dfuji" } # 既存のdfujiライブラリクレートをローカルパス依存として参照
+colored = "^3.0.0"
