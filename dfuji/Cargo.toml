@@ -1,0 +1,11 @@
+[package]
+name = "dfuji"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+astro = "^2.0.0"
+chrono = "^0.4.42"
+geographiclib-rs = "^0.2.5"
+tracing = "^0.1.41"
+tracing-subscriber = { version = "^0.3.20", features = ["fmt", "env-filter"] }
