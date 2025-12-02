@@ -1,0 +1,47 @@
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test:
+    name: Build, Test & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 最新の安定版Rustツールチェーンをインストール
+      # rustfmtとclippyコンポーネントも含める
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # ビルドキャッシュを利用してCI時間を短縮
+      - name: Cache dependencies
+        uses: swatinem/rust-cache@v2
+
+      # フォーマットのチェック (失敗するとCIが止まる)
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # Clippyによる静的解析 (警告をエラーとして扱う)
+      - name: Lint with Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      # テストの実行 (現在はテストコードがないかもしれませんが、将来のために重要)
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
+      # ビルド確認
+      - name: Build
+        run: cargo build --workspace --verbose
