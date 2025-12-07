@@ -195,6 +195,7 @@ version = "0.1.0"
 dependencies = [
  "astro",
  "chrono",
+ "dfuji-core",
  "geographiclib-rs",
  "tracing",
  "tracing-subscriber",
@@ -211,6 +212,10 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "dfuji-core"
+version = "0.1.0"
 
 [[package]]
 name = "find-msvc-tools"
