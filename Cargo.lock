@@ -190,13 +190,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
-name = "dfuji"
+name = "dfuji-app"
 version = "0.1.0"
 dependencies = [
- "astro",
  "chrono",
  "dfuji-core",
- "geographiclib-rs",
+ "dfuji-geo",
+ "dfuji-sun",
  "tracing",
  "tracing-subscriber",
 ]
@@ -208,7 +208,7 @@ dependencies = [
  "chrono",
  "clap",
  "colored",
- "dfuji",
+ "dfuji-app",
  "tracing",
  "tracing-subscriber",
 ]
@@ -216,6 +216,21 @@ dependencies = [
 [[package]]
 name = "dfuji-core"
 version = "0.1.0"
+
+[[package]]
+name = "dfuji-geo"
+version = "0.1.0"
+dependencies = [
+ "dfuji-core",
+ "geographiclib-rs",
+]
+
+[[package]]
+name = "dfuji-sun"
+version = "0.1.0"
+dependencies = [
+ "astro",
+]
 
 [[package]]
 name = "find-msvc-tools"

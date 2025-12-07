@@ -12,7 +12,7 @@ use astro::*;
 /// # 例
 /// ```rust
 /// use astro::time;
-/// use dfuji::sun::my_decimal_day;
+/// use dfuji_sun::my_decimal_day;
 ///
 /// let day = time::DayOfMonth {
 ///     day: 21,

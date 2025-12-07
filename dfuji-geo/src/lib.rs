@@ -1,3 +1,12 @@
+//! # dfuji-geo
+//!
+//! 地理座標計算のライブラリクレート
+//!
+//! ## 主な機能
+//! - 任意の2点間の高度角・方位角の計算
+//! - ECEF座標系への変換
+//! - WGS84楕円体を用いた測地計算
+
 use dfuji_core::{WGS84_A, WGS84_E2};
 use geographiclib_rs::{Geodesic, InverseGeodesic};
 

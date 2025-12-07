@@ -1,10 +1,12 @@
 [workspace] # プロジェクト全体を管理するCargoワークスペースの宣言
 members = [ # このワークスペースに含めるクレート一覧
-    "core",  # 定数や構造体を集約したコアライブラリクレート
-    "dfuji", # 既存の天文計算ロジックをまとめたライブラリクレート
-    "cli",   # clapベースでdfujiライブラリを呼び出す新規CLIクレート
+    "core",      # 定数や構造体を集約したコアライブラリクレート
+    "dfuji-geo", # 地理座標計算のライブラリクレート
+    "dfuji-sun", # 太陽位置計算のライブラリクレート
+    "dfuji-app", # ダイヤモンド富士計算のメインアプリケーションクレート
+    "cli",       # clapベースでdfuji-appライブラリを呼び出すCLIクレート
 ]
 resolver = "2" # 依存解決アルゴリズムとしてRust推奨の第2世代リゾルバを使用
 
 [workspace.metadata]
-rust-analyzer = { linkedProjects = ["dfuji/Cargo.toml", "cli/Cargo.toml", "core/Cargo.toml"] } # rust-analyzerにワークスペース内のクレートを認識させる設定
+rust-analyzer = { linkedProjects = ["dfuji-app/Cargo.toml", "cli/Cargo.toml", "core/Cargo.toml", "dfuji-geo/Cargo.toml", "dfuji-sun/Cargo.toml"] } # rust-analyzerにワークスペース内のクレートを認識させる設定
