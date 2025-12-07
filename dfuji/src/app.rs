@@ -1,5 +1,4 @@
-use crate::geo;
-use crate::sun;
+use crate::{geo, sun};
 use chrono::{Datelike, FixedOffset, LocalResult, TimeZone, Timelike};
 use tracing::{debug, info, instrument};
 
@@ -57,6 +56,7 @@ pub fn point(orig_lat: f64, orig_lon: f64, year: i16, month: u8, day: u8) -> Opt
 /// * `year` / `month` / `day` - 評価対象の日付
 /// # Returns
 /// * 条件を満たした `(lat, lon, unix_time)` のベクタ（見つからない場合は空）
+#[allow(clippy::too_many_arguments)]
 #[instrument(level = "info", skip(lat_step, lon_step))]
 pub fn range(
     lat_min: f64,
@@ -148,13 +148,13 @@ fn detect_alignment_for_location(
     day: u8,
     log_enabled: bool,
 ) -> Option<i64> {
-    let fuji_az_deg = geo::geo::calc_azimuth(obs_lat, obs_lon, DEST_LAT, DEST_LON);
-    let fuji_alt_deg = geo::geo::calc_altitude(
+    let fuji_az_deg = geo::calc_azimuth(obs_lat, obs_lon, DEST_LAT, DEST_LON);
+    let fuji_alt_deg = geo::calc_altitude(
         obs_lat, obs_lon, 0.0, // 標高を0mと仮定
         DEST_LAT, DEST_LON, DEST_ALT,
     );
 
-    let sunset_time = sun::sun::calc_sunset_time(year, month, day, obs_lat, obs_lon);
+    let sunset_time = sun::calc_sunset_time(year, month, day, obs_lat, obs_lon);
 
     const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
     let total_seconds = sunset_time.0 * 3600 + sunset_time.1 * 60 + sunset_time.2;
@@ -229,7 +229,7 @@ fn detect_alignment_for_location(
             );
         }
 
-        let (sun_az_deg, sun_alt_deg) = sun::sun::calc_sun_az_and_alt(
+        let (sun_az_deg, sun_alt_deg) = sun::calc_sun_az_and_alt(
             current_time.year() as i16,
             current_time.month() as u8,
             current_time.day() as u8,

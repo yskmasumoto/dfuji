@@ -1,6 +1,24 @@
-use crate::sun::helpers;
+mod helpers;
+
 use astro::*;
 
+/// calc_sun_az_and_alt
+/// ## 概要
+/// 指定した日時・観測地点における太陽の方位角
+/// および高度角を計算する関数
+/// # Arguments
+/// * `year` - 年
+/// * `month` - 月
+/// * `day` - 日
+/// * `hour` - 時
+/// * `minute` - 分
+/// * `second` - 秒
+/// * `time_zone` - タイムゾーン（例: 日本なら9.0）
+/// * `obs_lat_deg` - 観測地点の緯度（度）
+/// * `obs_lon_deg` - 観測地点の経度（度）
+/// # Returns
+/// * `(f64, f64)` - (方位角（度）, 高度角（度）)
+#[allow(clippy::too_many_arguments)]
 pub fn calc_sun_az_and_alt(
     year: i16,
     month: u8,
@@ -21,16 +39,16 @@ pub fn calc_sun_az_and_alt(
 
     // date
     let day_of_month = time::DayOfMonth {
-        day: day,
+        day,
         hr: hour,
         min: minute,
         sec: second,
-        time_zone: time_zone,
+        time_zone,
     };
 
     let date = time::Date {
-        year: year,
-        month: month,
+        year,
+        month,
         decimal_day: helpers::my_decimal_day(&day_of_month),
         cal_type: time::CalType::Gregorian,
     };
@@ -62,7 +80,7 @@ pub fn calc_sun_az_and_alt(
         atmos::refrac_frm_true_alt(altitude)
     };
 
-    altitude = altitude + r; // 大気屈折を考慮
+    altitude += r; // 大気屈折を考慮
 
     // radian to degree conversion
     // 求まるazimuthは南が0度、西が90度のため、180度を足して北が0度、東が90度になるようにする
@@ -89,7 +107,7 @@ pub fn calc_sunset_time(
     // 今日の0時、昨日、明日の赤道座標を計算
     // julian day
     let day_of_month_0h = time::DayOfMonth {
-        day: day,
+        day,
         hr: 0,
         min: 0,
         sec: 0.0,
@@ -97,8 +115,8 @@ pub fn calc_sunset_time(
     };
 
     let date_0h = time::Date {
-        year: year,
-        month: month,
+        year,
+        month,
         decimal_day: helpers::my_decimal_day(&day_of_month_0h),
         cal_type: time::CalType::Gregorian,
     };

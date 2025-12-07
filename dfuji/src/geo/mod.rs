@@ -21,6 +21,7 @@ const WGS84_E2: f64 = WGS84_F * (2.0 - WGS84_F); // 第一離心率^2
 /// * `dest_alt` - 目的地の標高（メートル）
 /// # Returns
 /// * 目的地の高度角（度）
+#[allow(clippy::too_many_arguments)]
 pub fn calc_altitude(
     obs_lat: f64,
     obs_lon: f64,
@@ -54,8 +55,7 @@ pub fn calc_altitude(
     }
 
     let horizontal = (east * east + north * north).sqrt();
-    let elevation = up.atan2(horizontal).to_degrees();
-    elevation
+    up.atan2(horizontal).to_degrees()
 }
 
 /// # geodetic_to_ecef

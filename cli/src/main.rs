@@ -72,7 +72,7 @@ fn main() {
                     "❌️ No Diamond Fuji alignments detected in the specified range.".red(),
                 );
             } else {
-                let _ = println!("{}", "🟢 Diamond Fuji alignments found:".green());
+                println!("{}", "🟢 Diamond Fuji alignments found:".green());
                 println!("Found {} candidate(s):", matches.len());
                 for (lat, lon, unix_time) in matches {
                     let ts = DateTime::<Utc>::from_timestamp(unix_time, 0)
