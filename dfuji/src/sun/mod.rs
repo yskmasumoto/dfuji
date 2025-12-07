@@ -1,5 +1,7 @@
 mod helpers;
 
+pub use helpers::my_decimal_day;
+
 use astro::*;
 
 /// calc_sun_az_and_alt
