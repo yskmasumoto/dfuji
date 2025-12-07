@@ -1,1 +1,1 @@
-{"rust-analyzer.linkedProjects": ["dfuji/Cargo.toml", "cli/Cargo.toml"]}
+{"rust-analyzer.linkedProjects": ["dfuji/Cargo.toml", "cli/Cargo.toml", "core/Cargo.toml"]}
