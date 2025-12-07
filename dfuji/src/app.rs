@@ -1,17 +1,10 @@
 use crate::{geo, sun};
 use chrono::{Datelike, FixedOffset, LocalResult, TimeZone, Timelike};
+use dfuji_core::{
+    AZIMUTH_THRESHOLD, CALCULATION_INTERVAL_SECONDS, ELEVATION_THRESHOLD, FUJI_ALTITUDE,
+    FUJI_LATITUDE, FUJI_LONGITUDE, OBSERVATION_OFFSET_HOURS,
+};
 use tracing::{debug, info, instrument};
-
-const DEST_LAT: f64 = 35.36063; // 富士山の緯度
-const DEST_LON: f64 = 138.72737; // 富士山の経度
-const DEST_ALT: f64 = 3776.0; // 富士山の標高
-
-const MINUS_HOUR: i64 = 2; // 日没時刻からのマイナス時間（2時間前）
-const INTERVAL_SECONDS: i64 = 30; // 30秒ごとの計算
-
-// 許容誤差
-const AZIMUTH_THRESHOLD: f64 = 0.2; // 方位角の許容範囲
-const ELEVATION_THRESHOLD: f64 = 0.2; // 高度角の許容範囲
 
 /// angular_diff_deg
 /// 2つの角度の差の絶対値を0〜180度の範囲で返す
@@ -148,10 +141,14 @@ fn detect_alignment_for_location(
     day: u8,
     log_enabled: bool,
 ) -> Option<i64> {
-    let fuji_az_deg = geo::calc_azimuth(obs_lat, obs_lon, DEST_LAT, DEST_LON);
+    let fuji_az_deg = geo::calc_azimuth(obs_lat, obs_lon, FUJI_LATITUDE, FUJI_LONGITUDE);
     let fuji_alt_deg = geo::calc_altitude(
-        obs_lat, obs_lon, 0.0, // 標高を0mと仮定
-        DEST_LAT, DEST_LON, DEST_ALT,
+        obs_lat,
+        obs_lon,
+        0.0, // 標高を0mと仮定
+        FUJI_LATITUDE,
+        FUJI_LONGITUDE,
+        FUJI_ALTITUDE,
     );
 
     let sunset_time = sun::calc_sunset_time(year, month, day, obs_lat, obs_lon);
@@ -210,12 +207,13 @@ fn detect_alignment_for_location(
         );
     }
 
-    let sunset_time_minus_2h = sunset_time - chrono::Duration::hours(MINUS_HOUR);
-    let loop_n = MINUS_HOUR * 60 * 60 / INTERVAL_SECONDS;
+    let sunset_time_minus_2h = sunset_time - chrono::Duration::hours(OBSERVATION_OFFSET_HOURS);
+    let loop_n = OBSERVATION_OFFSET_HOURS * 60 * 60 / CALCULATION_INTERVAL_SECONDS;
     let tz = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
 
     for i in 0..=loop_n {
-        let current_time = sunset_time_minus_2h + chrono::Duration::seconds(i * INTERVAL_SECONDS);
+        let current_time =
+            sunset_time_minus_2h + chrono::Duration::seconds(i * CALCULATION_INTERVAL_SECONDS);
         let current_time_str = current_time.format("%Y-%m-%d %H:%M:%S").to_string();
         if log_enabled {
             debug!(
