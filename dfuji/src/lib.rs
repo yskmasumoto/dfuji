@@ -1,5 +1,5 @@
 pub mod app;
-mod geo;
-mod sun;
+pub mod geo;
+pub mod sun;
 
 pub use app::{point, range};
