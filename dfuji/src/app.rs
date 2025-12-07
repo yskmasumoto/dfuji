@@ -143,8 +143,12 @@ fn detect_alignment_for_location(
 ) -> Option<i64> {
     let fuji_az_deg = geo::calc_azimuth(obs_lat, obs_lon, FUJI_LATITUDE, FUJI_LONGITUDE);
     let fuji_alt_deg = geo::calc_altitude(
-        obs_lat, obs_lon, 0.0, // 標高を0mと仮定
-        FUJI_LATITUDE, FUJI_LONGITUDE, FUJI_ALTITUDE,
+        obs_lat,
+        obs_lon,
+        0.0, // 標高を0mと仮定
+        FUJI_LATITUDE,
+        FUJI_LONGITUDE,
+        FUJI_ALTITUDE,
     );
 
     let sunset_time = sun::calc_sunset_time(year, month, day, obs_lat, obs_lon);
@@ -208,7 +212,8 @@ fn detect_alignment_for_location(
     let tz = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
 
     for i in 0..=loop_n {
-        let current_time = sunset_time_minus_2h + chrono::Duration::seconds(i * CALCULATION_INTERVAL_SECONDS);
+        let current_time =
+            sunset_time_minus_2h + chrono::Duration::seconds(i * CALCULATION_INTERVAL_SECONDS);
         let current_time_str = current_time.format("%Y-%m-%d %H:%M:%S").to_string();
         if log_enabled {
             debug!(
