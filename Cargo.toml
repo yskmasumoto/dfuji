@@ -7,4 +7,4 @@ members = [ # このワークスペースに含めるクレート一覧
 resolver = "2" # 依存解決アルゴリズムとしてRust推奨の第2世代リゾルバを使用
 
 [workspace.metadata]
-rust-analyzer = { linkedProjects = ["dfuji/Cargo.toml", "cli/Cargo.toml"] }
+rust-analyzer = { linkedProjects = ["dfuji/Cargo.toml", "cli/Cargo.toml", "core/Cargo.toml"] } # rust-analyzerにワークスペース内のクレートを認識させる設定
