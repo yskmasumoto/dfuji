@@ -8,5 +8,5 @@ chrono = "^0.4.42"
 tracing = "^0.1.43"
 tracing-subscriber = { version = "^0.3.22", features = ["fmt", "env-filter"] }
 dfuji-core = { path = "../core" }
-dfuji-geo = { path = "../dfuji-geo" }
-dfuji-sun = { path = "../dfuji-sun" }
+dfuji-geo = { path = "../geo" }
+dfuji-sun = { path = "../sun" }
