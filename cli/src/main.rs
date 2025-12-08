@@ -25,7 +25,7 @@ fn main() {
             year,
             month,
             day,
-        } => match dfuji::point(latitude, longitude, year, month, day) {
+        } => match dfuji_app::point(latitude, longitude, year, month, day) {
             Some(unix_time) => {
                 let ts =
                     DateTime::<Utc>::from_timestamp(unix_time, 0).expect("valid UNIX timestamp");
@@ -62,7 +62,7 @@ fn main() {
             month,
             day,
         } => {
-            let matches = dfuji::range(
+            let matches = dfuji_app::range(
                 lat_min, lat_max, lat_step, lon_min, lon_max, lon_step, year, month, day,
             );
 

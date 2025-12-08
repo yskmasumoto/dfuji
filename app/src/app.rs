@@ -1,9 +1,10 @@
-use crate::{geo, sun};
 use chrono::{Datelike, FixedOffset, LocalResult, TimeZone, Timelike};
 use dfuji_core::{
     AZIMUTH_THRESHOLD, CALCULATION_INTERVAL_SECONDS, ELEVATION_THRESHOLD, FUJI_ALTITUDE,
     FUJI_LATITUDE, FUJI_LONGITUDE, OBSERVATION_OFFSET_HOURS,
 };
+use dfuji_geo as geo;
+use dfuji_sun as sun;
 use tracing::{debug, info, instrument};
 
 /// angular_diff_deg
