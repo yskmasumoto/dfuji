@@ -8,7 +8,8 @@
 //! - WGS84楕円体を用いた測地計算
 
 use dfuji_core::{
-    BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, ELEVATION_THRESHOLD, FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2
+    BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, ELEVATION_THRESHOLD,
+    FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2,
 };
 use geographiclib_rs::{DirectGeodesic, Geodesic, InverseGeodesic};
 
@@ -129,6 +130,7 @@ pub fn calc_destination_point(
 /// * `obs_azimuth` - 観測地点から目的地への方位角（度）
 /// obs_azimuthには太陽の反対側の方位角を指定すること
 /// ```rust
+/// let sun_azimuth = 150.0; // ex) 太陽の方位角
 /// let obs_azimuth = (sun_azimuth + 180.0) % 360.0;
 /// ```
 pub fn solver_distance_for_altitude(target_altitude: f64, obs_azimuth: f64) -> Option<f64> {
