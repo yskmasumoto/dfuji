@@ -8,8 +8,7 @@
 //! - WGS84楕円体を用いた測地計算
 
 use dfuji_core::{
-    BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, BISECTION_TOLERANCE,
-    FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2,
+    BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, ELEVATION_THRESHOLD, FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2
 };
 use geographiclib_rs::{DirectGeodesic, Geodesic, InverseGeodesic};
 
@@ -157,7 +156,7 @@ fn bisection_method(
     mut low: f64,
     mut high: f64,
 ) -> Option<f64> {
-    const TOLERANCE: f64 = BISECTION_TOLERANCE; // 許容誤差（度）
+    const TOLERANCE: f64 = ELEVATION_THRESHOLD; // 許容誤差（度）
     const MAX_ITER: usize = BISECTION_MAX_ITER; // 最大反復回数
 
     // 二分法の反復処理

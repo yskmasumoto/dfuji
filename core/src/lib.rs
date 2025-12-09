@@ -42,16 +42,13 @@ pub const AZIMUTH_THRESHOLD: f64 = 0.2;
 pub const ELEVATION_THRESHOLD: f64 = 0.2;
 
 /// bisection method関連の定数
-/// 高度角から距離を逆算する際の探索範囲や許容誤差
+/// 高度角から距離を逆算する際の探索範囲
 
 /// 最小距離（メートル）
 pub const BISECTION_LOW_DISTANCE: f64 = 100.0;
 
 /// 最大距離（メートル）
 pub const BISECTION_HIGH_DISTANCE: f64 = 200_000.0;
-
-/// 許容誤差（度）
-pub const BISECTION_TOLERANCE: f64 = 0.1;
 
 /// 最大反復回数
 pub const BISECTION_MAX_ITER: usize = 100;
