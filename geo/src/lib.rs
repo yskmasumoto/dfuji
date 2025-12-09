@@ -7,7 +7,10 @@
 //! - ECEF座標系への変換
 //! - WGS84楕円体を用いた測地計算
 
-use dfuji_core::{WGS84_A, WGS84_E2};
+use dfuji_core::{
+    BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, BISECTION_TOLERANCE,
+    FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2,
+};
 use geographiclib_rs::{DirectGeodesic, Geodesic, InverseGeodesic};
 
 /// # calc_altitude
@@ -126,15 +129,13 @@ pub fn calc_destination_point(
 /// * `target_altitude` - ある時刻における太陽の高度角（度）
 /// * `obs_azimuth` - 観測地点から目的地への方位角（度）
 /// obs_azimuthには太陽の反対側の方位角を指定すること
-/// # Returns
-/// * `Option<f64>` - 観測地点から目的地までの距離（メートル）
-pub fn solver_distance_for_altitude(
-    target_altitude: f64,
-    obs_azimuth: f64,
-) -> Option<f64> {
+/// ```rust
+/// let obs_azimuth = (sun_azimuth + 180.0) % 360.0;
+/// ```
+pub fn solver_distance_for_altitude(target_altitude: f64, obs_azimuth: f64) -> Option<f64> {
     // 探索範囲の初期化
-    let low = 0.0;
-    let high = 200_000.0; // 200 km
+    let low = BISECTION_LOW_DISTANCE; // 100 m
+    let high = BISECTION_HIGH_DISTANCE; // 200 km
 
     // 二分法による探索
     bisection_method(target_altitude, obs_azimuth, low, high)
@@ -156,8 +157,8 @@ fn bisection_method(
     mut low: f64,
     mut high: f64,
 ) -> Option<f64> {
-    const TOLERANCE: f64 = 0.01; // 許容誤差（度）
-    const MAX_ITER: usize = 100; // 最大反復回数
+    const TOLERANCE: f64 = BISECTION_TOLERANCE; // 許容誤差（度）
+    const MAX_ITER: usize = BISECTION_MAX_ITER; // 最大反復回数
 
     // 二分法の反復処理
     for _ in 0..MAX_ITER {
@@ -165,10 +166,18 @@ fn bisection_method(
         let mid = (low + high) / 2.0;
 
         // 中点に対応する目的地の緯度・経度を計算
-        let (dest_lat, dest_lon) = calc_destination_point(35.3606, 138.7274, obs_azimuth, mid);
-        
+        let (dest_lat, dest_lon) =
+            calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, obs_azimuth, mid);
+
         // 中点に対応する高度角を計算
-        let calculated_altitude = calc_altitude(35.3606, 138.7274, 3776.0, dest_lat, dest_lon, 0.0);
+        let calculated_altitude = calc_altitude(
+            dest_lat,
+            dest_lon,
+            0.0,
+            FUJI_LATITUDE,
+            FUJI_LONGITUDE,
+            FUJI_ALTITUDE,
+        );
 
         // 目的の高度角に近いかどうかをチェックして、閾値内であれば解を返す
         if (calculated_altitude - target_altitude).abs() < TOLERANCE {
@@ -177,9 +186,9 @@ fn bisection_method(
 
         // 探索範囲を更新
         if calculated_altitude < target_altitude {
-            low = mid;
-        } else {
             high = mid;
+        } else {
+            low = mid;
         }
     }
 
