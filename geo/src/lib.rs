@@ -8,13 +8,7 @@
 //! - WGS84楕円体を用いた測地計算
 
 use dfuji_core::{WGS84_A, WGS84_E2};
-use geographiclib_rs::{Geodesic, InverseGeodesic};
-
-// const DEFAULT_INTERVAL: f64 = 0.01; // デフォルトの緯度経度の間隔
-// const DEFAULT_LAT_LIMIT_UPPER: f64 = 36.0; // 緯度の上限
-// const DEFAULT_LAT_LIMIT_LOWER: f64 = 34.0; // 緯度の下限
-// const DEFAULT_LON_LIMIT_UPPER: f64 = 141.0; // 経度の上限
-// const DEFAULT_LON_LIMIT_LOWER: f64 = 139.2; // 経度の下限
+use geographiclib_rs::{DirectGeodesic, Geodesic, InverseGeodesic};
 
 /// # calc_altitude
 /// 任意の2点間の高度角を計算する関数
@@ -105,24 +99,22 @@ pub fn calc_azimuth(obs_lat: f64, obs_lon: f64, dest_lat: f64, dest_lon: f64) ->
     az_deg
 }
 
-// /// 緯度のベクタを返すようにシグネチャを変更
-// pub fn make_lat_vec(
-//     interval: Option<f64>,
-//     lat_limit_upper: Option<f64>,
-//     lat_limit_lower: Option<f64>,
-// ) -> Vec<f64> {
-//     // デフォルト値
-//     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
-//     let lat_min = lat_limit_lower.unwrap_or(DEFAULT_LAT_LIMIT_LOWER);
-//     let lat_max = lat_limit_upper.unwrap_or(DEFAULT_LAT_LIMIT_UPPER);
-
-//     // ステップ数を計算
-//     // ステップ数は緯度も経度も同じなので、緯度で計算
-//     let steps = ((lat_max - lat_min) / interval).ceil() as usize;
-//     let mut lat_vec: Vec<f64> = Vec::with_capacity(steps);
-//     for i in 0..=steps {
-//         lat_vec.push(lat_min + i as f64 * interval);
-//     }
-
-//     lat_vec
-// }
+/// # calc_destination_point
+/// 測地線順解法を用いて、ある地点から、指定した方位角と距離に基づいて目的地の緯度・経度を計算する関数
+/// # Arguments
+/// * `start_lat` - 出発点の緯度（度）
+/// * `start_lon` - 出発点の経度（度）
+/// * `azimuth` - 方位角（度）
+/// * `distance` - 距離（メートル）
+/// # Returns
+/// * `(f64, f64)` - 目的地の緯度・経度（度）
+pub fn calc_destination_point(
+    start_lat: f64,
+    start_lon: f64,
+    azimuth: f64,
+    distance: f64,
+) -> (f64, f64) {
+    let geod = Geodesic::wgs84();
+    let (_, dest_lat, dest_lon) = geod.direct(start_lat, start_lon, azimuth, distance);
+    (dest_lat, dest_lon)
+}
