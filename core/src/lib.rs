@@ -41,6 +41,10 @@ pub const AZIMUTH_THRESHOLD: f64 = 0.2;
 /// 太陽と富士山の高度角の差がこの値以下であれば一致とみなす
 pub const ELEVATION_THRESHOLD: f64 = 0.2;
 
+/// 太陽視半径（度）
+/// 太陽の見かけの半径を考慮するための定数
+pub const SUN_APPARENT_RADIUS: f64 = 0.2666;
+
 /// bisection method関連の定数
 /// 高度角から距離を逆算する際の探索範囲
 

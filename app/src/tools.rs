@@ -230,3 +230,56 @@ pub(crate) fn detect_alignment_for_location(
     None
 }
 
+/// create_latlon_vec
+/// 富士山の周囲でダイヤモンド富士が観測可能な地点の緯度経度ペアを生成する
+/// # Arguments
+/// * `year` - 年
+/// * `month` - 月
+/// * `day` - 日
+/// # Returns
+/// * ダイヤモンド富士が観測可能な地点の緯度経度ペアのベクタ
+pub(crate) fn create_latlon_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)> {
+    // 富士山の緯度経度における日没時刻を計算
+    let sunset_time = sun::calc_sunset_time(year, month, day, FUJI_LATITUDE, FUJI_LONGITUDE);
+
+    // 日没時刻の前後30分を評価
+    let mut polygon_coords = Vec::new();
+    for offset_minutes in -30..=30 {
+        let current_time = chrono::NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
+            .and_then(|date| {
+                date.and_hms_opt(
+                    (sunset_time.0 as i32 + (offset_minutes / 60)) as u32,
+                    (sunset_time.1 as i32 + (offset_minutes % 60)) as u32,
+                    sunset_time.2 as u32,
+                )
+            });
+
+        let (sun_az_deg, sun_alt_deg) = match current_time {
+            Some(time) => sun::calc_sun_az_and_alt(
+                year,
+                month,
+                day,
+                time.hour() as u8,
+                time.minute() as u8,
+                time.second() as f64,
+                9.0,
+                FUJI_LATITUDE,
+                FUJI_LONGITUDE,
+            ),
+            None => continue,
+        };
+
+        let obs_azimuth = (sun_az_deg + 180.0).rem_euclid(360.0);
+
+        if let Some(distance) = geo::solver_distance_for_altitude(sun_alt_deg, obs_azimuth) {
+            let (obs_lat, obs_lon) =
+                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, obs_azimuth, distance);
+            polygon_coords.push((obs_lat, obs_lon));
+        }
+    }
+    polygon_coords
+}
+
+pub(crate) fn geojson(vec: &Vec<(f64, f64)>) -> String {
+    geo::vec2geojson(vec)
+}

@@ -2,7 +2,6 @@ use crate::tools;
 
 use tracing::{info, instrument};
 
-
 /// point
 /// ダイヤモンド富士の観測可能性を単一地点で評価する関数
 /// # Arguments
@@ -77,3 +76,38 @@ pub fn range(
     results
 }
 
+/// polygon
+/// ダイヤモンド富士の観測可能な範囲をポリゴンとしてGeoJSON形式で返す関数
+/// # Arguments
+/// * `year` - 年
+/// * `month` - 月
+/// * `day` - 日
+/// # Returns
+/// * ポリゴンを表すGeoJSON文字列
+pub fn polygon(year: i16, month: u8, day: u8) -> String {
+    let latlon_vec = tools::create_latlon_vec(year, month, day);
+    tools::geojson(&latlon_vec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn point_invalid_date_returns_none() {
+        assert!(point(35.0, 138.0, 2025, 13, 1).is_none());
+    }
+
+    #[test]
+    fn range_with_zero_steps_returns_empty() {
+        let result = range(35.0, 36.0, 0.0, 138.0, 139.0, 0.0, 2025, 11, 18);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn polygon_returns_polygon_json() {
+        let output = polygon(2025, 11, 18);
+        assert!(output.contains("\"type\":\"FeatureCollection\""));
+        assert!(output.contains("\"features\":[]"));
+    }
+}
