@@ -12,6 +12,7 @@ use dfuji_core::{
     FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2,
 };
 use geographiclib_rs::{DirectGeodesic, Geodesic, InverseGeodesic};
+use geojson::{Feature, FeatureCollection, Geometry, Value};
 
 /// # calc_altitude
 /// 任意の2点間の高度角を計算する関数
@@ -195,3 +196,36 @@ fn bisection_method(
 
     None // 解が見つからなかった場合
 }
+
+/// # vec2geojson
+/// 座標のベクタをGeoJSON形式の文字列に変換する関数
+/// # Arguments
+/// * `coords` - 座標のベクタ（(経度, 緯度)のタプルのベクタ）
+/// # Returns
+/// * GeoJSON形式の文字列
+pub fn vec2geojson(coords: &Vec<(f64, f64)>) -> String {
+    let features: Vec<Feature> = coords
+        .iter()
+        .map(|&(lon, lat)| {
+            let geometry = Geometry::new(Value::Point(vec![lon, lat]));
+            Feature {
+                geometry: Some(geometry),
+                properties: None,
+                id: None,
+                bbox: None,
+                foreign_members: None,
+            }
+        })
+        .collect();
+
+    let feature_collection = FeatureCollection {
+        features,
+        bbox: None,
+        foreign_members: None,
+    };
+
+    let geojson = geojson::GeoJson::from(feature_collection);
+    geojson.to_string()
+}
+
+    
