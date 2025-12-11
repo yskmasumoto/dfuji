@@ -119,7 +119,7 @@ pub fn calc_destination_point(
     distance: f64,
 ) -> (f64, f64) {
     let geod = Geodesic::wgs84();
-    let (_, dest_lat, dest_lon) = geod.direct(start_lat, start_lon, azimuth, distance);
+    let (dest_lat, dest_lon, _) = geod.direct(start_lat, start_lon, azimuth, distance);
     (dest_lat, dest_lon)
 }
 
