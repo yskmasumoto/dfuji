@@ -227,5 +227,3 @@ pub fn vec2geojson(coords: &Vec<(f64, f64)>) -> String {
     let geojson = geojson::GeoJson::from(feature_collection);
     geojson.to_string()
 }
-
-    

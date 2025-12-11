@@ -84,6 +84,7 @@ pub fn range(
 /// * `day` - 日
 /// # Returns
 /// * ポリゴンを表すGeoJSON文字列
+#[instrument(level = "info")]
 pub fn polygon(year: i16, month: u8, day: u8) -> String {
     let latlon_vec = tools::create_latlon_vec(year, month, day);
     tools::geojson(&latlon_vec)
