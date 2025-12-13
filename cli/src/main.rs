@@ -10,9 +10,9 @@ use tracing::info;
 /// # 単一地点での判定
 /// dfuji-cli point --latitude 35.697638293191105 --longitude 139.58268645295962 --year 2025 --month 11 --day 18
 /// # 緯度・経度の範囲を走査
-/// dfuji-cli range --lat-min 35.6 --lat-max 35.8 --lat-step 0.01 \
-/// --lon-min 139.5 --lon-max 139.7 --lon-step 0.01 \
-/// --year 2025 --month 11 --day 18
+/// dfuji-cli range --lat-min 35.6 --lat-max 35.8 --lat-step 0.01 --lon-min 139.5 --lon-max 139.7 --lon-step 0.01 --year 2025 --month 11 --day 18
+/// # ポリゴン出力
+/// dfuji-cli polygon --year 2025 --month 11 --day 18
 /// ```
 fn main() {
     let cli = Cli::parse();
@@ -85,6 +85,10 @@ fn main() {
                 }
             }
         }
+        Commands::Polygon { year, month, day } => {
+            let geojson = dfuji_app::polygon(year, month, day);
+            println!("{}", geojson);
+        }
     }
 }
 
@@ -139,6 +143,18 @@ enum Commands {
         year: i16,
         #[arg(long)]
         month: u8,
+        #[arg(long)]
+        day: u8,
+    },
+    /// ダイヤモンド富士の観測可能な範囲をポリゴンとしてGeoJSON形式で出力
+    Polygon {
+        /// 観測する年 (例: 2025)
+        #[arg(long)]
+        year: i16,
+        /// 観測する月 (1-12)
+        #[arg(long)]
+        month: u8,
+        /// 観測する日 (1-31)
         #[arg(long)]
         day: u8,
     },

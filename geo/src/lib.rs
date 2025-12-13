@@ -7,14 +7,12 @@
 //! - ECEF座標系への変換
 //! - WGS84楕円体を用いた測地計算
 
-use dfuji_core::{WGS84_A, WGS84_E2};
-use geographiclib_rs::{Geodesic, InverseGeodesic};
-
-// const DEFAULT_INTERVAL: f64 = 0.01; // デフォルトの緯度経度の間隔
-// const DEFAULT_LAT_LIMIT_UPPER: f64 = 36.0; // 緯度の上限
-// const DEFAULT_LAT_LIMIT_LOWER: f64 = 34.0; // 緯度の下限
-// const DEFAULT_LON_LIMIT_UPPER: f64 = 141.0; // 経度の上限
-// const DEFAULT_LON_LIMIT_LOWER: f64 = 139.2; // 経度の下限
+use dfuji_core::{
+    BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, ELEVATION_THRESHOLD,
+    FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2,
+};
+use geographiclib_rs::{DirectGeodesic, Geodesic, InverseGeodesic};
+use geojson::{Feature, FeatureCollection, Geometry, Value};
 
 /// # calc_altitude
 /// 任意の2点間の高度角を計算する関数
@@ -88,9 +86,9 @@ fn geodetic_to_ecef(lat_deg: f64, lon_deg: f64, alt_m: f64) -> (f64, f64, f64) {
     (x, y, z)
 }
 
-/// # calc_azimuth_and_altitude
+/// # calc_azimuth
 /// ## 概要
-/// 任意の2点間の方位角と高度角を計算する関数
+/// 任意の2点間の方位角を計算する関数
 /// # Arguments
 /// * `obs_lat` - 観測者の緯度（度）
 /// * `obs_lon` - 観測者の経度（度）
@@ -105,24 +103,126 @@ pub fn calc_azimuth(obs_lat: f64, obs_lon: f64, dest_lat: f64, dest_lon: f64) ->
     az_deg
 }
 
-// /// 緯度のベクタを返すようにシグネチャを変更
-// pub fn make_lat_vec(
-//     interval: Option<f64>,
-//     lat_limit_upper: Option<f64>,
-//     lat_limit_lower: Option<f64>,
-// ) -> Vec<f64> {
-//     // デフォルト値
-//     let interval = interval.unwrap_or(DEFAULT_INTERVAL);
-//     let lat_min = lat_limit_lower.unwrap_or(DEFAULT_LAT_LIMIT_LOWER);
-//     let lat_max = lat_limit_upper.unwrap_or(DEFAULT_LAT_LIMIT_UPPER);
+/// # calc_destination_point
+/// 測地線順解法を用いて、ある地点から、指定した方位角と距離に基づいて目的地の緯度・経度を計算する関数
+/// # Arguments
+/// * `start_lat` - 出発点の緯度（度）
+/// * `start_lon` - 出発点の経度（度）
+/// * `azimuth` - 方位角（度）
+/// * `distance` - 距離（メートル）
+/// # Returns
+/// * `(f64, f64)` - 目的地の緯度・経度（度）
+pub fn calc_destination_point(
+    start_lat: f64,
+    start_lon: f64,
+    azimuth: f64,
+    distance: f64,
+) -> (f64, f64) {
+    let geod = Geodesic::wgs84();
+    let (dest_lat, dest_lon, _) = geod.direct(start_lat, start_lon, azimuth, distance);
+    (dest_lat, dest_lon)
+}
 
-//     // ステップ数を計算
-//     // ステップ数は緯度も経度も同じなので、緯度で計算
-//     let steps = ((lat_max - lat_min) / interval).ceil() as usize;
-//     let mut lat_vec: Vec<f64> = Vec::with_capacity(steps);
-//     for i in 0..=steps {
-//         lat_vec.push(lat_min + i as f64 * interval);
-//     }
+/// # solver_distance_for_altitude
+/// ## 概要
+/// 指定した高度角と方位角に基づいて、観測地点から目的地までの距離を二分法で求める関数
+/// # Arguments
+/// * `target_altitude` - ある時刻における太陽の高度角（度）
+/// * `obs_azimuth` - 観測地点から目的地への方位角（度）, obs_azimuthには太陽の反対側の方位角を指定すること
+/// ```rust
+/// let sun_azimuth = 150.0; // ex) 太陽の方位角
+/// let obs_azimuth = (sun_azimuth + 180.0) % 360.0;
+/// ```
+pub fn solver_distance_for_altitude(target_altitude: f64, obs_azimuth: f64) -> Option<f64> {
+    // 探索範囲の初期化
+    let low = BISECTION_LOW_DISTANCE; // 100 m
+    let high = BISECTION_HIGH_DISTANCE; // 200 km
 
-//     lat_vec
-// }
+    // 二分法による探索
+    bisection_method(target_altitude, obs_azimuth, low, high)
+}
+
+/// # bisection_method
+/// ## 概要
+/// 二分法を用いて、指定した高度角に基づいて目的地までの距離を求める関数
+/// # Arguments
+/// * `target_altitude` - ある時刻における太陽の高度角（度）
+/// * `obs_azimuth` - 観測地点から目的地への方位角（度）
+/// * `low` - 探索範囲の下限（メートル）
+/// * `high` - 探索範囲の上限（メートル）
+/// # Returns
+/// * `Option<f64>` - 観測地点から目的地までの距離（メートル）
+fn bisection_method(
+    target_altitude: f64,
+    obs_azimuth: f64,
+    mut low: f64,
+    mut high: f64,
+) -> Option<f64> {
+    const TOLERANCE: f64 = ELEVATION_THRESHOLD; // 許容誤差（度）
+    const MAX_ITER: usize = BISECTION_MAX_ITER; // 最大反復回数
+
+    // 二分法の反復処理
+    for _ in 0..MAX_ITER {
+        // 中点を計算
+        let mid = (low + high) / 2.0;
+
+        // 中点に対応する目的地の緯度・経度を計算
+        let (dest_lat, dest_lon) =
+            calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, obs_azimuth, mid);
+
+        // 中点に対応する高度角を計算
+        let calculated_altitude = calc_altitude(
+            dest_lat,
+            dest_lon,
+            0.0,
+            FUJI_LATITUDE,
+            FUJI_LONGITUDE,
+            FUJI_ALTITUDE,
+        );
+
+        // 目的の高度角に近いかどうかをチェックして、閾値内であれば解を返す
+        if (calculated_altitude - target_altitude).abs() < TOLERANCE {
+            return Some(mid);
+        }
+
+        // 探索範囲を更新
+        if calculated_altitude < target_altitude {
+            high = mid;
+        } else {
+            low = mid;
+        }
+    }
+
+    None // 解が見つからなかった場合
+}
+
+/// # vec2geojson
+/// 座標のベクタをGeoJSON形式の文字列に変換する関数
+/// # Arguments
+/// * `coords` - 座標のベクタ（(経度, 緯度)のタプルのベクタ）
+/// # Returns
+/// * GeoJSON形式の文字列
+pub fn vec2geojson(coords: &[(f64, f64)]) -> String {
+    let features: Vec<Feature> = coords
+        .iter()
+        .map(|&(lon, lat)| {
+            let geometry = Geometry::new(Value::Point(vec![lon, lat]));
+            Feature {
+                geometry: Some(geometry),
+                properties: None,
+                id: None,
+                bbox: None,
+                foreign_members: None,
+            }
+        })
+        .collect();
+
+    let feature_collection = FeatureCollection {
+        features,
+        bbox: None,
+        foreign_members: None,
+    };
+
+    let geojson = geojson::GeoJson::from(feature_collection);
+    geojson.to_string()
+}

@@ -10,3 +10,6 @@ tracing-subscriber = { version = "^0.3.22", features = ["fmt", "env-filter"] }
 dfuji-core = { path = "../core" }
 dfuji-geo = { path = "../geo" }
 dfuji-sun = { path = "../sun" }
+
+[dev-dependencies]
+serde_json = "^1.0"
