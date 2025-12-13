@@ -96,7 +96,14 @@ mod tests {
     use chrono::{Datelike, Timelike};
     use serde_json::Value;
 
+    /// has_point_in_geojson
     /// GeoJSON文字列に指定の緯度経度が含まれるかを誤差許容付きで判定する
+    /// # Arguments
+    /// * `geojson_str` - GeoJSON形式の文字列
+    /// * `lat` - 緯度（度）
+    /// * `lon` - 経度（度）
+    /// # Returns
+    /// * 含まれる場合はtrue、含まれない場合はfalse
     fn has_point_in_geojson(geojson_str: &str, lat: f64, lon: f64) -> bool {
         let value: Value = serde_json::from_str(geojson_str).expect("valid geojson");
         let features = value
@@ -243,9 +250,9 @@ mod tests {
 
     /// consistency_among_functions
     /// pointとrange, polygonの整合性を確認するテスト
-    /// # テストが失敗する条件
-    /// * point関数で観測可能と判定された地点がrange関数で見つからない
-    /// * point関数で観測可能と判定された地点がpolygon関数で生成されたポリゴンに含まれない
+    /// 観測可能な地点をpoint関数で抽出し、その地点がrange関数とpolygon関数の結果にも含まれることを確認する
+    /// （テスト時間短縮のため、抽出地点は先頭3件に制限）
+    /// has_point_in_geojson関数を使用してpolygon関数の結果を検証する
     #[test]
     fn consistency_among_functions() {
         let year = 2025;
