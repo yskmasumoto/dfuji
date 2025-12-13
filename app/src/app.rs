@@ -1,4 +1,5 @@
 use crate::tools;
+use dfuji_geo::vec2geojson;
 
 use tracing::{info, instrument};
 
@@ -87,7 +88,7 @@ pub fn range(
 #[instrument(level = "info")]
 pub fn polygon(year: i16, month: u8, day: u8) -> String {
     let latlon_vec = tools::create_latlon_vec(year, month, day);
-    tools::geojson(&latlon_vec)
+    vec2geojson(&latlon_vec)
 }
 
 #[cfg(test)]
