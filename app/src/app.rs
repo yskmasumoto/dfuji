@@ -87,8 +87,8 @@ pub fn range(
 /// * ポリゴンを表すGeoJSON文字列
 #[instrument(level = "info")]
 pub fn polygon(year: i16, month: u8, day: u8) -> String {
-    let latlon_vec = tools::create_latlon_vec(year, month, day);
-    vec2geojson(&latlon_vec)
+    let lonlat_vec = tools::create_lonlat_vec(year, month, day);
+    vec2geojson(&lonlat_vec)
 }
 
 #[cfg(test)]
@@ -241,9 +241,9 @@ mod tests {
             "altitude sanity check near Fuji: {:.2} deg, dest from (0,0) east 1km -> ({:.6}, {:.6})",
             sanity_alt, dest_lat, dest_lon
         );
-        let candidates = crate::tools::create_latlon_vec(2025, 11, 20);
+        let candidates = crate::tools::create_lonlat_vec(2025, 11, 20);
         println!(
-            "total candidates from create_latlon_vec: {}",
+            "total candidates from create_lonlat_vec: {}",
             candidates.len()
         );
         assert!(!candidates.is_empty());
@@ -260,11 +260,11 @@ mod tests {
         let month = 11;
         let day = 18;
         // polygonの生成元データから観測可能な地点を抽出し、テスト時間を抑えるため先頭3件に絞る
-        let candidates = crate::tools::create_latlon_vec(year, month, day);
+        let candidates = crate::tools::create_lonlat_vec(year, month, day);
         assert!(!candidates.is_empty(), "Polygon candidate list is empty");
 
         let mut aligned_samples = Vec::new();
-        for (lat, lon) in candidates {
+        for (lon, lat) in candidates {
             if let Some(point_time) = point(lat, lon, year, month, day) {
                 aligned_samples.push((lat, lon, point_time));
                 if aligned_samples.len() >= 3 {
