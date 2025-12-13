@@ -94,18 +94,61 @@ pub fn polygon(year: i16, month: u8, day: u8) -> String {
 mod tests {
     use super::*;
     use chrono::{Datelike, Timelike};
+    use serde_json::Value;
 
+    /// GeoJSON文字列に指定の緯度経度が含まれるかを誤差許容付きで判定する
+    fn has_point_in_geojson(geojson_str: &str, lat: f64, lon: f64) -> bool {
+        let value: Value = serde_json::from_str(geojson_str).expect("valid geojson");
+        let features = value
+            .get("features")
+            .and_then(|v| v.as_array())
+            .expect("features array in geojson");
+
+        const TOLERANCE: f64 = 1e-6;
+
+        features.iter().any(|feature| {
+            let coords = feature
+                .get("geometry")
+                .and_then(|g| g.get("coordinates"))
+                .and_then(|c| c.as_array());
+
+            match coords {
+                Some(coords) if coords.len() == 2 => {
+                    let x = coords[0].as_f64();
+                    let y = coords[1].as_f64();
+                    match (x, y) {
+                        (Some(x), Some(y)) => {
+                            let lat_first = (x - lat).abs() < TOLERANCE
+                                && (y - lon).abs() < TOLERANCE;
+                            let lon_first = (x - lon).abs() < TOLERANCE
+                                && (y - lat).abs() < TOLERANCE;
+                            lat_first || lon_first
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        })
+    }
+
+    /// point_valid_date_returns_some
+    /// 単一地点で有効な日付を与えた場合にSomeが返ることを確認するテスト
     #[test]
     fn point_invalid_date_returns_none() {
         assert!(point(35.0, 138.0, 2025, 13, 1).is_none());
     }
 
+    /// range_with_zero_steps_returns_empty
+    /// 緯度または経度の刻み幅が0の場合に空のベクタが返ることを確認するテスト
     #[test]
     fn range_with_zero_steps_returns_empty() {
         let result = range(35.0, 36.0, 0.0, 138.0, 139.0, 0.0, 2025, 11, 18);
         assert!(result.is_empty());
     }
 
+    /// polygon_returns_polygon_json
+    /// ポリゴンがGeoJSON形式で返ることを確認するテスト
     #[test]
     fn polygon_returns_polygon_json() {
         let output = polygon(2025, 11, 18);
@@ -113,6 +156,8 @@ mod tests {
         assert!(!output.contains("\"features\":[]"));
     }
 
+    /// debug_polygon_point_count
+    /// ポリゴン生成のデバッグ用テスト（無視される）
     #[ignore]
     #[test]
     fn debug_polygon_point_count() {
@@ -194,5 +239,65 @@ mod tests {
             candidates.len()
         );
         assert!(!candidates.is_empty());
+    }
+
+    /// consistency_among_functions
+    /// pointとrange, polygonの整合性を確認するテスト
+    /// # テストが失敗する条件
+    /// * point関数で観測可能と判定された地点がrange関数で見つからない
+    /// * point関数で観測可能と判定された地点がpolygon関数で生成されたポリゴンに含まれない
+    #[test]
+    fn consistency_among_functions() {
+        let year = 2025;
+        let month = 11;
+        let day = 18;
+        // polygonの生成元データから観測可能な地点を抽出し、テスト時間を抑えるため先頭3件に絞る
+        let candidates = crate::tools::create_latlon_vec(year, month, day);
+        assert!(!candidates.is_empty(), "Polygon candidate list is empty");
+
+        let mut aligned_samples = Vec::new();
+        for (lat, lon) in candidates {
+            if let Some(point_time) = point(lat, lon, year, month, day) {
+                aligned_samples.push((lat, lon, point_time));
+                if aligned_samples.len() >= 3 {
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            !aligned_samples.is_empty(),
+            "No alignment found among polygon candidates",
+        );
+
+        // polygon出力は一度だけ生成し、各地点が含まれることを確認する
+        let polygon_geojson = polygon(year, month, day);
+
+        for (lat, lon, point_time) in aligned_samples {
+            println!("[consistency] candidate lat/lon = ({:.6}, {:.6})", lat, lon);
+            println!("[consistency] point result = {:?}", point_time);
+
+            // range関数で同じ地点が含まれることを確認（刻み幅は最小範囲で固定）
+            let results = range(lat, lat, 0.0001, lon, lon, 0.0001, year, month, day);
+            println!(
+                "[consistency] range search returned {} matches",
+                results.len()
+            );
+            let found_in_range = results.iter().any(|(r_lat, r_lon, r_time)| {
+                (*r_lat - lat).abs() < 1e-9
+                    && (*r_lon - lon).abs() < 1e-9
+                    && *r_time == point_time
+            });
+            assert!(
+                found_in_range,
+                "Point ({lat:.6},{lon:.6}) not found in range results",
+            );
+
+            // polygon関数で生成されたGeoJSONに地点が含まれることを確認
+            assert!(
+                has_point_in_geojson(&polygon_geojson, lat, lon),
+                "Point ({lat:.6},{lon:.6}) not found in polygon GeoJSON",
+            );
+        }
     }
 }
