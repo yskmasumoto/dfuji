@@ -139,8 +139,8 @@ mod tests {
         })
     }
 
-    /// point_valid_date_returns_some
-    /// 単一地点で有効な日付を与えた場合にSomeが返ることを確認するテスト
+    /// point_invalid_date_returns_none
+    /// 単一地点で無効な日付を与えた場合にNoneが返ることを確認するテスト
     #[test]
     fn point_invalid_date_returns_none() {
         assert!(point(35.0, 138.0, 2025, 13, 1).is_none());
