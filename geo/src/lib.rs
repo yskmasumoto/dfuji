@@ -128,8 +128,7 @@ pub fn calc_destination_point(
 /// 指定した高度角と方位角に基づいて、観測地点から目的地までの距離を二分法で求める関数
 /// # Arguments
 /// * `target_altitude` - ある時刻における太陽の高度角（度）
-/// * `obs_azimuth` - 観測地点から目的地への方位角（度）
-/// obs_azimuthには太陽の反対側の方位角を指定すること
+/// * `obs_azimuth` - 観測地点から目的地への方位角（度）, obs_azimuthには太陽の反対側の方位角を指定すること
 /// ```rust
 /// let sun_azimuth = 150.0; // ex) 太陽の方位角
 /// let obs_azimuth = (sun_azimuth + 180.0) % 360.0;
@@ -203,7 +202,7 @@ fn bisection_method(
 /// * `coords` - 座標のベクタ（(経度, 緯度)のタプルのベクタ）
 /// # Returns
 /// * GeoJSON形式の文字列
-pub fn vec2geojson(coords: &Vec<(f64, f64)>) -> String {
+pub fn vec2geojson(coords: &[(f64, f64)]) -> String {
     let features: Vec<Feature> = coords
         .iter()
         .map(|&(lon, lat)| {

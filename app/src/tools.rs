@@ -280,6 +280,6 @@ pub(crate) fn create_latlon_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
     polygon_coords
 }
 
-pub(crate) fn geojson(vec: &Vec<(f64, f64)>) -> String {
+pub(crate) fn geojson(vec: &[(f64, f64)]) -> String {
     geo::vec2geojson(vec)
 }

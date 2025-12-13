@@ -47,7 +47,6 @@ pub const SUN_APPARENT_RADIUS: f64 = 0.2666;
 
 /// bisection method関連の定数
 /// 高度角から距離を逆算する際の探索範囲
-
 /// 最小距離（メートル）
 pub const BISECTION_LOW_DISTANCE: f64 = 100.0;
 
