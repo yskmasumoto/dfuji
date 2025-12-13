@@ -125,10 +125,10 @@ mod tests {
                     let y = coords[1].as_f64();
                     match (x, y) {
                         (Some(x), Some(y)) => {
-                            let lat_first = (x - lat).abs() < TOLERANCE
-                                && (y - lon).abs() < TOLERANCE;
-                            let lon_first = (x - lon).abs() < TOLERANCE
-                                && (y - lat).abs() < TOLERANCE;
+                            let lat_first =
+                                (x - lat).abs() < TOLERANCE && (y - lon).abs() < TOLERANCE;
+                            let lon_first =
+                                (x - lon).abs() < TOLERANCE && (y - lat).abs() < TOLERANCE;
                             lat_first || lon_first
                         }
                         _ => false,
@@ -291,9 +291,7 @@ mod tests {
                 results.len()
             );
             let found_in_range = results.iter().any(|(r_lat, r_lon, r_time)| {
-                (*r_lat - lat).abs() < 1e-9
-                    && (*r_lon - lon).abs() < 1e-9
-                    && *r_time == point_time
+                (*r_lat - lat).abs() < 1e-9 && (*r_lon - lon).abs() < 1e-9 && *r_time == point_time
             });
             assert!(
                 found_in_range,
