@@ -88,7 +88,7 @@ fn geodetic_to_ecef(lat_deg: f64, lon_deg: f64, alt_m: f64) -> (f64, f64, f64) {
 
 /// # calc_azimuth
 /// ## 概要
-/// 任意の2点間の方位角と高度角を計算する関数
+/// 任意の2点間の方位角を計算する関数
 /// # Arguments
 /// * `obs_lat` - 観測者の緯度（度）
 /// * `obs_lon` - 観測者の経度（度）
