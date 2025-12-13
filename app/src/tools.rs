@@ -244,30 +244,37 @@ pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
 
     // 日没時刻の前後30分を評価
     let mut polygon_coords = Vec::new();
-    for offset_minutes in -30..=30 {
-        let current_time = chrono::NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
-            .and_then(|date| {
-                date.and_hms_opt(
-                    (sunset_time.0 as i32 + (offset_minutes / 60)) as u32,
-                    (sunset_time.1 as i32 + (offset_minutes % 60)) as u32,
-                    sunset_time.2 as u32,
-                )
-            });
+    let base_time = match chrono::NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
+        .and_then(|date| {
+            date.and_hms_opt(
+                sunset_time.0 as u32,
+                sunset_time.1 as u32,
+                sunset_time.2 as u32,
+            )
+        }) {
+        Some(time) => time,
+        None => return polygon_coords,
+    };
 
-        let (sun_az_deg, sun_alt_deg) = match current_time {
-            Some(time) => sun::calc_sun_az_and_alt(
-                year,
-                month,
-                day,
-                time.hour() as u8,
-                time.minute() as u8,
-                time.second() as f64,
-                9.0,
-                FUJI_LATITUDE,
-                FUJI_LONGITUDE,
-            ),
-            None => continue,
+    for offset_minutes in -30..=30 {
+        // 各分ごとに観測地点を計算
+        let offset = chrono::Duration::minutes(offset_minutes.into());
+        let Some(current_time) = base_time.checked_add_signed(offset) else {
+            continue;
         };
+
+        // 指定時刻における太陽の方位角と高度角を計算
+        let (sun_az_deg, sun_alt_deg) = sun::calc_sun_az_and_alt(
+            current_time.year() as i16,
+            current_time.month() as u8,
+            current_time.day() as u8,
+            current_time.hour() as u8,
+            current_time.minute() as u8,
+            current_time.second() as f64,
+            9.0,
+            FUJI_LATITUDE,
+            FUJI_LONGITUDE,
+        );
 
         let obs_azimuth = (sun_az_deg + 180.0).rem_euclid(360.0);
 
