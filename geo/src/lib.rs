@@ -203,24 +203,46 @@ fn bisection_method(
 /// # Returns
 /// * GeoJSON形式の文字列
 pub fn vec2geojson(coords: &[(f64, f64)]) -> String {
-    let features: Vec<Feature> = coords
-        .iter()
-        .map(|&(lon, lat)| {
-            let geometry = Geometry::new(Value::Point(vec![lon, lat]));
-            Feature {
-                geometry: Some(geometry),
+    let feature_collection = if coords.is_empty() {
+        FeatureCollection {
+            features: Vec::new(),
+            bbox: None,
+            foreign_members: None,
+        }
+    } else {
+        let geometry = match coords.len() {
+            1 => {
+                let (lon, lat) = coords[0];
+                Value::Point(vec![lon, lat])
+            }
+            2 => {
+                let line_string: Vec<Vec<f64>> =
+                    coords.iter().map(|&(lon, lat)| vec![lon, lat]).collect();
+                Value::LineString(line_string)
+            }
+            _ => {
+                let mut ring: Vec<Vec<f64>> =
+                    coords.iter().map(|&(lon, lat)| vec![lon, lat]).collect();
+                if ring.first() != ring.last()
+                    && let Some(first) = ring.first().cloned()
+                {
+                    ring.push(first);
+                }
+                Value::Polygon(vec![ring])
+            }
+        };
+
+        FeatureCollection {
+            features: vec![Feature {
+                geometry: Some(Geometry::new(geometry)),
                 properties: None,
                 id: None,
                 bbox: None,
                 foreign_members: None,
-            }
-        })
-        .collect();
-
-    let feature_collection = FeatureCollection {
-        features,
-        bbox: None,
-        foreign_members: None,
+            }],
+            bbox: None,
+            foreign_members: None,
+        }
     };
 
     let geojson = geojson::GeoJson::from(feature_collection);

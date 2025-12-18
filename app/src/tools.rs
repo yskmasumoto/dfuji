@@ -1,11 +1,236 @@
 use chrono::{Datelike, FixedOffset, LocalResult, TimeZone, Timelike};
 use dfuji_core::{
-    AZIMUTH_THRESHOLD, CALCULATION_INTERVAL_SECONDS, ELEVATION_THRESHOLD, FUJI_ALTITUDE,
-    FUJI_LATITUDE, FUJI_LONGITUDE, OBSERVATION_OFFSET_HOURS,
+    AZIMUTH_THRESHOLD, BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER,
+    CALCULATION_INTERVAL_SECONDS, ELEVATION_THRESHOLD, FUJI_ALTITUDE, FUJI_LATITUDE,
+    FUJI_LONGITUDE, OBSERVATION_OFFSET_HOURS,
 };
 use dfuji_geo as geo;
 use dfuji_sun as sun;
 use tracing::{debug, info};
+
+fn normalize_sunset_naive_datetime(
+    year: i16,
+    month: u8,
+    day: u8,
+    lat: f64,
+    lon: f64,
+) -> Option<chrono::NaiveDateTime> {
+    let sunset_time = sun::calc_sunset_time(year, month, day, lat, lon);
+
+    const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
+    let total_seconds = sunset_time.0 * 3600 + sunset_time.1 * 60 + sunset_time.2;
+    let day_offset = total_seconds.div_euclid(SECONDS_PER_DAY);
+    let mut seconds_in_day = total_seconds.rem_euclid(SECONDS_PER_DAY);
+    if seconds_in_day < 0 {
+        seconds_in_day += SECONDS_PER_DAY;
+    }
+
+    let hour = (seconds_in_day / 3600) as u32;
+    let minute = ((seconds_in_day % 3600) / 60) as u32;
+    let second = (seconds_in_day % 60) as u32;
+
+    let date = chrono::NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)?
+        .checked_add_signed(chrono::Duration::days(day_offset))?;
+
+    date.and_hms_opt(hour, minute, second)
+}
+
+fn alignment_altitude_diff_at_distance(
+    current_time: chrono::NaiveDateTime,
+    az_from_fuji_deg: f64,
+    distance_m: f64,
+) -> f64 {
+    let (obs_lat, obs_lon) =
+        geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az_from_fuji_deg, distance_m);
+
+    let fuji_alt_deg = geo::calc_altitude(
+        obs_lat,
+        obs_lon,
+        0.0,
+        FUJI_LATITUDE,
+        FUJI_LONGITUDE,
+        FUJI_ALTITUDE,
+    );
+
+    let (_, sun_alt_deg) = sun::calc_sun_az_and_alt(
+        current_time.year() as i16,
+        current_time.month() as u8,
+        current_time.day() as u8,
+        current_time.hour() as u8,
+        current_time.minute() as u8,
+        current_time.second() as f64,
+        9.0,
+        obs_lat,
+        obs_lon,
+    );
+
+    fuji_alt_deg - sun_alt_deg
+}
+
+fn alignment_altitude_diff_minus_target_at_distance(
+    current_time: chrono::NaiveDateTime,
+    az_from_fuji_deg: f64,
+    distance_m: f64,
+    target_altitude_diff_deg: f64,
+) -> f64 {
+    alignment_altitude_diff_at_distance(current_time, az_from_fuji_deg, distance_m)
+        - target_altitude_diff_deg
+}
+
+fn solve_distance_for_altitude_diff(
+    current_time: chrono::NaiveDateTime,
+    az_from_fuji_deg: f64,
+    target_altitude_diff_deg: f64,
+) -> Option<f64> {
+    let mut low = BISECTION_LOW_DISTANCE;
+    let mut high = BISECTION_HIGH_DISTANCE;
+
+    let mut f_low = alignment_altitude_diff_minus_target_at_distance(
+        current_time,
+        az_from_fuji_deg,
+        low,
+        target_altitude_diff_deg,
+    );
+    let f_high = alignment_altitude_diff_minus_target_at_distance(
+        current_time,
+        az_from_fuji_deg,
+        high,
+        target_altitude_diff_deg,
+    );
+
+    if f_low * f_high > 0.0 {
+        return None;
+    }
+
+    for _ in 0..BISECTION_MAX_ITER {
+        let mid = (low + high) / 2.0;
+        let f_mid = alignment_altitude_diff_minus_target_at_distance(
+            current_time,
+            az_from_fuji_deg,
+            mid,
+            target_altitude_diff_deg,
+        );
+        if f_mid.abs() < ELEVATION_THRESHOLD {
+            return Some(mid);
+        }
+
+        if f_low * f_mid <= 0.0 {
+            high = mid;
+        } else {
+            low = mid;
+            f_low = f_mid;
+        }
+    }
+
+    None
+}
+
+fn solve_distance_for_altitude_match(
+    current_time: chrono::NaiveDateTime,
+    az_from_fuji_deg: f64,
+) -> Option<f64> {
+    solve_distance_for_altitude_diff(current_time, az_from_fuji_deg, 0.0)
+}
+
+fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) -> Option<f64> {
+    // 「観測地点依存の太陽方位」を吸収するための固定点反復。
+    // 反復: az := sun_az(observer_at(az, alt_match)) + 180
+    let (sun_az_deg_fuji, _) = sun::calc_sun_az_and_alt(
+        current_time.year() as i16,
+        current_time.month() as u8,
+        current_time.day() as u8,
+        current_time.hour() as u8,
+        current_time.minute() as u8,
+        current_time.second() as f64,
+        9.0,
+        FUJI_LATITUDE,
+        FUJI_LONGITUDE,
+    );
+
+    let mut az_from_fuji_deg = (sun_az_deg_fuji + 180.0).rem_euclid(360.0);
+    for _ in 0..10 {
+        let distance_m = solve_distance_for_altitude_match(current_time, az_from_fuji_deg)?;
+        let (obs_lat, obs_lon) = geo::calc_destination_point(
+            FUJI_LATITUDE,
+            FUJI_LONGITUDE,
+            az_from_fuji_deg,
+            distance_m,
+        );
+        let (sun_az_deg, _) = sun::calc_sun_az_and_alt(
+            current_time.year() as i16,
+            current_time.month() as u8,
+            current_time.day() as u8,
+            current_time.hour() as u8,
+            current_time.minute() as u8,
+            current_time.second() as f64,
+            9.0,
+            obs_lat,
+            obs_lon,
+        );
+        let next = (sun_az_deg + 180.0).rem_euclid(360.0);
+        if angular_diff_deg(next, az_from_fuji_deg) < 1e-6 {
+            az_from_fuji_deg = next;
+            break;
+        }
+        az_from_fuji_deg = next;
+    }
+    Some(az_from_fuji_deg)
+}
+
+#[cfg(test)]
+pub(crate) fn debug_estimate_center_az_from_fuji_for_time(
+    current_time: chrono::NaiveDateTime,
+) -> Option<f64> {
+    estimate_center_az_from_fuji_for_time(current_time)
+}
+
+fn cross(o: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
+    (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
+}
+
+fn convex_hull(mut points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
+    points.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    points.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-12 && (a.1 - b.1).abs() < 1e-12);
+
+    if points.len() <= 2 {
+        return points;
+    }
+
+    let mut lower: Vec<(f64, f64)> = Vec::new();
+    for p in &points {
+        while lower.len() >= 2 {
+            let n = lower.len();
+            if cross(lower[n - 2], lower[n - 1], *p) <= 0.0 {
+                lower.pop();
+            } else {
+                break;
+            }
+        }
+        lower.push(*p);
+    }
+
+    let mut upper: Vec<(f64, f64)> = Vec::new();
+    for p in points.iter().rev() {
+        while upper.len() >= 2 {
+            let n = upper.len();
+            if cross(upper[n - 2], upper[n - 1], *p) <= 0.0 {
+                upper.pop();
+            } else {
+                break;
+            }
+        }
+        upper.push(*p);
+    }
+
+    lower.pop();
+    upper.pop();
+    lower.extend(upper);
+    lower
+}
 
 /// angular_diff_deg
 /// 2つの角度の差の絶対値を0〜180度の範囲で返す
@@ -239,50 +464,72 @@ pub(crate) fn detect_alignment_for_location(
 /// # Returns
 /// * ダイヤモンド富士が観測可能な地点の経度緯度ペアのベクタ
 pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)> {
-    // 富士山の緯度経度における日没時刻を計算
-    let sunset_time = sun::calc_sunset_time(year, month, day, FUJI_LATITUDE, FUJI_LONGITUDE);
-
-    // 日没時刻の前後30分を評価
-    let mut polygon_coords = Vec::new();
-    let base_time = match chrono::NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
-        .and_then(|date| {
-            date.and_hms_opt(
-                sunset_time.0 as u32,
-                sunset_time.1 as u32,
-                sunset_time.2 as u32,
-            )
-        }) {
-        Some(time) => time,
-        None => return polygon_coords,
+    // 富士山の緯度経度における日没時刻を正規化して取得
+    let Some(base_time) =
+        normalize_sunset_naive_datetime(year, month, day, FUJI_LATITUDE, FUJI_LONGITUDE)
+    else {
+        return Vec::new();
     };
 
-    for offset_minutes in -30..=30 {
-        // 各分ごとに観測地点を計算
-        let offset = chrono::Duration::minutes(offset_minutes.into());
+    let alt_deltas = [-ELEVATION_THRESHOLD, ELEVATION_THRESHOLD];
+
+    // time×az_from_fuji のサンプル点群から凸包を取って over-approximation する。
+    // 「時刻によって許容領域が回転/移動する」ケースで、単純な time-sweep リングは
+    // under-approx になりやすいため（既知 point-hit の取りこぼし対策）。
+    // point() の閾値は「観測点での az_diff」だが、polygon 生成は「富士山から見た方位 (az_from_fuji)」で近似する。
+    // この2つは一致しないため、過小評価を避けるための最小限のパディングを入れる。
+    const AZ_FROM_FUJI_PADDING_DEG: f64 = 0.2;
+    let az_band = AZIMUTH_THRESHOLD + AZ_FROM_FUJI_PADDING_DEG;
+    const AZ_SAMPLES: usize = 9;
+
+    let mut candidates: Vec<(f64, f64)> = Vec::new();
+
+    let start_offset_seconds = -(OBSERVATION_OFFSET_HOURS * 60 * 60);
+    let end_offset_seconds = 0;
+    let step_seconds = CALCULATION_INTERVAL_SECONDS;
+
+    let mut offset_seconds = start_offset_seconds;
+    while offset_seconds <= end_offset_seconds {
+        let offset = chrono::Duration::seconds(offset_seconds);
         let Some(current_time) = base_time.checked_add_signed(offset) else {
+            offset_seconds += step_seconds;
             continue;
         };
 
-        // 指定時刻における太陽の方位角と高度角を計算
-        let (sun_az_deg, sun_alt_deg) = sun::calc_sun_az_and_alt(
-            current_time.year() as i16,
-            current_time.month() as u8,
-            current_time.day() as u8,
-            current_time.hour() as u8,
-            current_time.minute() as u8,
-            current_time.second() as f64,
-            9.0,
-            FUJI_LATITUDE,
-            FUJI_LONGITUDE,
-        );
+        let Some(center_az_from_fuji_deg) = estimate_center_az_from_fuji_for_time(current_time)
+        else {
+            offset_seconds += step_seconds;
+            continue;
+        };
 
-        let obs_azimuth = (sun_az_deg + 180.0).rem_euclid(360.0);
+        for i in 0..AZ_SAMPLES {
+            let t = if AZ_SAMPLES == 1 {
+                0.0
+            } else {
+                (i as f64) / ((AZ_SAMPLES - 1) as f64)
+            };
+            let az = (center_az_from_fuji_deg + (-az_band + 2.0 * az_band * t)).rem_euclid(360.0);
 
-        if let Some(distance) = geo::solver_distance_for_altitude(sun_alt_deg, obs_azimuth) {
-            let (obs_lat, obs_lon) =
-                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, obs_azimuth, distance);
-            polygon_coords.push((obs_lon, obs_lat));
+            let Some(d_top) = solve_distance_for_altitude_diff(current_time, az, alt_deltas[1])
+            else {
+                continue;
+            };
+            let Some(d_bottom) = solve_distance_for_altitude_diff(current_time, az, alt_deltas[0])
+            else {
+                continue;
+            };
+
+            let (top_lat, top_lon) =
+                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_top);
+            let (bottom_lat, bottom_lon) =
+                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_bottom);
+
+            candidates.push((top_lon, top_lat));
+            candidates.push((bottom_lon, bottom_lat));
         }
+
+        offset_seconds += step_seconds;
     }
-    polygon_coords
+
+    convex_hull(candidates)
 }
