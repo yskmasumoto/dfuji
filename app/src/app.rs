@@ -97,47 +97,133 @@ mod tests {
     use chrono::{Datelike, Timelike};
     use serde_json::Value;
 
-    /// has_point_in_geojson
-    /// GeoJSON文字列に指定の緯度経度が含まれるかを誤差許容付きで判定する
-    /// # Arguments
-    /// * `geojson_str` - GeoJSON形式の文字列
-    /// * `lat` - 緯度（度）
-    /// * `lon` - 経度（度）
-    /// # Returns
-    /// * 含まれる場合はtrue、含まれない場合はfalse
-    fn has_point_in_geojson(geojson_str: &str, lat: f64, lon: f64) -> bool {
+    const TOLERANCE: f64 = 1e-6; // 点の一致判定用
+    const COLLINEARITY_TOLERANCE: f64 = 1e-10; // 共線性判定用（線分上の点判定）
+    const BBOX_MARGIN: f64 = 1e-10; // バウンディングボックスのマージン
+
+    /// is_point_inside_polygon_geojson
+    /// polygon関数のGeoJSON出力（Point/LineString/Polygon）に対して、指定の緯度経度が含まれるかを判定する
+    fn is_point_inside_polygon_geojson(geojson_str: &str, lat: f64, lon: f64) -> bool {
         let value: Value = serde_json::from_str(geojson_str).expect("valid geojson");
-        let features = value
+        let feature = match value
             .get("features")
             .and_then(|v| v.as_array())
-            .expect("features array in geojson");
+            .and_then(|arr| arr.first())
+        {
+            Some(f) => f,
+            None => return false,
+        };
 
-        const TOLERANCE: f64 = 1e-6;
+        let geometry = match feature.get("geometry") {
+            Some(g) => g,
+            None => return false,
+        };
 
-        features.iter().any(|feature| {
-            let coords = feature
-                .get("geometry")
-                .and_then(|g| g.get("coordinates"))
-                .and_then(|c| c.as_array());
+        let geometry_type = geometry.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
-            match coords {
-                Some(coords) if coords.len() == 2 => {
-                    let x = coords[0].as_f64();
-                    let y = coords[1].as_f64();
-                    match (x, y) {
+        match geometry_type {
+            "Point" => {
+                let coords = geometry
+                    .get("coordinates")
+                    .and_then(|c| c.as_array())
+                    .filter(|c| c.len() == 2);
+                let Some(coords) = coords else {
+                    return false;
+                };
+                let (x, y) = (coords[0].as_f64(), coords[1].as_f64());
+                match (x, y) {
+                    (Some(x), Some(y)) => {
+                        (x - lon).abs() < TOLERANCE && (y - lat).abs() < TOLERANCE
+                    }
+                    _ => false,
+                }
+            }
+            "LineString" => {
+                // 仕様上は線分上の厳密判定もできるが、ここでは頂点一致のみを見る
+                let coords = geometry.get("coordinates").and_then(|c| c.as_array());
+                let Some(coords) = coords else {
+                    return false;
+                };
+                coords.iter().any(|p| {
+                    let p = p.as_array().filter(|p| p.len() == 2);
+                    let Some(p) = p else {
+                        return false;
+                    };
+                    match (p[0].as_f64(), p[1].as_f64()) {
                         (Some(x), Some(y)) => {
-                            let lat_first =
-                                (x - lat).abs() < TOLERANCE && (y - lon).abs() < TOLERANCE;
-                            let lon_first =
-                                (x - lon).abs() < TOLERANCE && (y - lat).abs() < TOLERANCE;
-                            lat_first || lon_first
+                            (x - lon).abs() < TOLERANCE && (y - lat).abs() < TOLERANCE
                         }
                         _ => false,
                     }
-                }
-                _ => false,
+                })
             }
-        })
+            "Polygon" => {
+                let ring = geometry
+                    .get("coordinates")
+                    .and_then(|c| c.as_array())
+                    .and_then(|c| c.first())
+                    .and_then(|c| c.as_array());
+                let Some(ring) = ring else {
+                    return false;
+                };
+
+                // 頂点一致・辺上を「含まれる」とみなす
+                let point_on_segment = |x: f64, y: f64, x1: f64, y1: f64, x2: f64, y2: f64| {
+                    // cross product = 0 (collinear) + bounding box check
+                    let cross = (x - x1) * (y2 - y1) - (y - y1) * (x2 - x1);
+                    if cross.abs() > COLLINEARITY_TOLERANCE {
+                        return false;
+                    }
+                    let min_x = x1.min(x2) - BBOX_MARGIN;
+                    let max_x = x1.max(x2) + BBOX_MARGIN;
+                    let min_y = y1.min(y2) - BBOX_MARGIN;
+                    let max_y = y1.max(y2) + BBOX_MARGIN;
+                    x >= min_x && x <= max_x && y >= min_y && y <= max_y
+                };
+
+                for i in 0..ring.len().saturating_sub(1) {
+                    let a = ring[i].as_array().filter(|p| p.len() == 2);
+                    let b = ring[i + 1].as_array().filter(|p| p.len() == 2);
+                    let (Some(a), Some(b)) = (a, b) else {
+                        continue;
+                    };
+                    let (x1, y1) = (a[0].as_f64(), a[1].as_f64());
+                    let (x2, y2) = (b[0].as_f64(), b[1].as_f64());
+                    let (Some(x1), Some(y1), Some(x2), Some(y2)) = (x1, y1, x2, y2) else {
+                        continue;
+                    };
+                    if (x1 - lon).abs() < TOLERANCE && (y1 - lat).abs() < TOLERANCE {
+                        return true;
+                    }
+                    if point_on_segment(lon, lat, x1, y1, x2, y2) {
+                        return true;
+                    }
+                }
+
+                // Ray casting: (lon,lat) 平面近似
+                let mut inside = false;
+                for i in 0..ring.len().saturating_sub(1) {
+                    let a = ring[i].as_array().filter(|p| p.len() == 2);
+                    let b = ring[i + 1].as_array().filter(|p| p.len() == 2);
+                    let (Some(a), Some(b)) = (a, b) else {
+                        continue;
+                    };
+                    let (x1, y1) = (a[0].as_f64(), a[1].as_f64());
+                    let (x2, y2) = (b[0].as_f64(), b[1].as_f64());
+                    let (Some(x1), Some(y1), Some(x2), Some(y2)) = (x1, y1, x2, y2) else {
+                        continue;
+                    };
+
+                    let intersects =
+                        (y1 > lat) != (y2 > lat) && (lon < (x2 - x1) * (lat - y1) / (y2 - y1) + x1);
+                    if intersects {
+                        inside = !inside;
+                    }
+                }
+                inside
+            }
+            _ => false,
+        }
     }
 
     /// point_invalid_date_returns_none
@@ -162,6 +248,91 @@ mod tests {
         let output = polygon(2025, 11, 18);
         assert!(output.contains("\"type\":\"FeatureCollection\""));
         assert!(!output.contains("\"features\":[]"));
+    }
+
+    /// point_hit_location_is_inside_polygon
+    /// point() でヒットする既知の地点が、polygon() の範囲に含まれることを確認する回帰テスト
+    #[test]
+    fn point_hit_location_is_inside_polygon() {
+        // 既知のヒット地点（2025-11-18）
+        let year = 2025;
+        let month = 11;
+        let day = 18;
+        let lat = 35.703999654324605;
+        let lon = 139.59943105087748;
+
+        assert!(
+            point(lat, lon, year, month, day).is_some(),
+            "Expected point() to hit at the known location",
+        );
+
+        let polygon_geojson = polygon(year, month, day);
+        assert!(
+            is_point_inside_polygon_geojson(&polygon_geojson, lat, lon),
+            "Known hit location should be inside polygon() output",
+        );
+    }
+
+    /// multiple_point_hit_locations_are_inside_polygon
+    /// point() でヒットする複数地点が、polygon() の範囲に含まれることを確認する回帰テスト
+    #[test]
+    fn multiple_point_hit_locations_are_inside_polygon() {
+        struct Case {
+            year: i16,
+            month: u8,
+            day: u8,
+            points: &'static [(f64, f64)],
+        }
+
+        // 近傍探索で実際に point() がヒットした座標を固定し、将来の変更で
+        // 「point は通るが polygon が包含しない」回帰を検出する。
+        let cases = [
+            Case {
+                year: 2025,
+                month: 11,
+                day: 18,
+                points: &[
+                    (35.695_999_654_324_602, 139.589_431_050_877_494),
+                    (35.695_999_654_324_602, 139.591_431_050_877_475),
+                    (35.697_999_654_324_605, 139.593_431_050_877_484),
+                    (35.699_999_654_324_607, 139.591_431_050_877_475),
+                    (35.699_999_654_324_607, 139.595_431_050_877_494),
+                ],
+            },
+            Case {
+                year: 2025,
+                month: 11,
+                day: 20,
+                points: &[
+                    (35.703_999_654_324_605, 139.579_431_050_877_474),
+                    (35.703_999_654_324_605, 139.587_431_050_877_484),
+                    (35.707_999_654_324_603, 139.583_431_050_877_493),
+                    (35.707_999_654_324_603, 139.591_431_050_877_475),
+                    (35.707_999_654_324_603, 139.595_431_050_877_494),
+                ],
+            },
+        ];
+
+        for case in cases {
+            let polygon_geojson = polygon(case.year, case.month, case.day);
+
+            for &(lat, lon) in case.points {
+                assert!(
+                    point(lat, lon, case.year, case.month, case.day).is_some(),
+                    "Expected point() to hit at (lat={lat}, lon={lon}) for {:04}-{:02}-{:02}",
+                    case.year,
+                    case.month,
+                    case.day,
+                );
+                assert!(
+                    is_point_inside_polygon_geojson(&polygon_geojson, lat, lon),
+                    "Expected polygon() to contain (lat={lat}, lon={lon}) for {:04}-{:02}-{:02}",
+                    case.year,
+                    case.month,
+                    case.day,
+                );
+            }
+        }
     }
 
     /// debug_polygon_point_count
@@ -249,11 +420,114 @@ mod tests {
         assert!(!candidates.is_empty());
     }
 
+    /// debug_known_hit_outside_polygon
+    /// 既知の point-hit が polygon に入らない原因調査用（無視される）
+    #[ignore]
+    #[test]
+    fn debug_known_hit_outside_polygon() {
+        struct Case {
+            year: i16,
+            month: u8,
+            day: u8,
+            lat: f64,
+            lon: f64,
+        }
+
+        let cases = [
+            Case {
+                year: 2025,
+                month: 11,
+                day: 18,
+                lat: 35.703_999_654_324_605,
+                lon: 139.599_431_050_877_48,
+            },
+            Case {
+                year: 2025,
+                month: 11,
+                day: 20,
+                lat: 35.707_999_654_324_6,
+                lon: 139.583_431_050_877_5,
+            },
+        ];
+
+        let tz = chrono::FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+
+        for c in cases {
+            let unix = crate::point(c.lat, c.lon, c.year, c.month, c.day).expect("expected hit");
+            let dt = chrono::DateTime::from_timestamp(unix, 0)
+                .expect("valid unix")
+                .with_timezone(&tz)
+                .naive_local();
+
+            let az_from_fuji = dfuji_geo::calc_azimuth(
+                dfuji_core::FUJI_LATITUDE,
+                dfuji_core::FUJI_LONGITUDE,
+                c.lat,
+                c.lon,
+            );
+
+            let center = crate::tools::debug_estimate_center_az_from_fuji_for_time(dt);
+
+            let fuji_az_from_obs = dfuji_geo::calc_azimuth(
+                c.lat,
+                c.lon,
+                dfuji_core::FUJI_LATITUDE,
+                dfuji_core::FUJI_LONGITUDE,
+            );
+            let fuji_alt_from_obs = dfuji_geo::calc_altitude(
+                c.lat,
+                c.lon,
+                0.0,
+                dfuji_core::FUJI_LATITUDE,
+                dfuji_core::FUJI_LONGITUDE,
+                dfuji_core::FUJI_ALTITUDE,
+            );
+            let (sun_az, sun_alt) = dfuji_sun::calc_sun_az_and_alt(
+                dt.year() as i16,
+                dt.month() as u8,
+                dt.day() as u8,
+                dt.hour() as u8,
+                dt.minute() as u8,
+                dt.second() as f64,
+                9.0,
+                c.lat,
+                c.lon,
+            );
+
+            let az_diff = crate::tools::angular_diff_deg(sun_az, fuji_az_from_obs);
+            let alt_diff = (sun_alt - fuji_alt_from_obs).abs();
+
+            let polygon_geojson = crate::polygon(c.year, c.month, c.day);
+            let inside = is_point_inside_polygon_geojson(&polygon_geojson, c.lat, c.lon);
+
+            println!("--- {:04}-{:02}-{:02} ---", c.year, c.month, c.day);
+            println!("hit time (JST naive): {dt}");
+            println!("az_from_fuji(deg)={az_from_fuji:.6}");
+            println!("center_estimate={center:?}");
+            if let Some(center) = center {
+                let d = crate::tools::angular_diff_deg(az_from_fuji, center);
+                println!(
+                    "angular_diff(az_from_fuji, center)={d:.6} (az_band={:.3})",
+                    dfuji_core::AZIMUTH_THRESHOLD
+                );
+            }
+            println!(
+                "point-metrics: sun_az={sun_az:.3} fuji_az={fuji_az_from_obs:.3} az_diff={az_diff:.6} (thr={:.3})",
+                dfuji_core::AZIMUTH_THRESHOLD
+            );
+            println!(
+                "point-metrics: sun_alt={sun_alt:.3} fuji_alt={fuji_alt_from_obs:.3} alt_diff={alt_diff:.6} (thr={:.3})",
+                dfuji_core::ELEVATION_THRESHOLD
+            );
+            println!("inside_polygon={inside}");
+        }
+    }
+
     /// consistency_among_functions
     /// pointとrange, polygonの整合性を確認するテスト
     /// 観測可能な地点をpoint関数で抽出し、その地点がrange関数とpolygon関数の結果にも含まれることを確認する
     /// （テスト時間短縮のため、抽出地点は先頭3件に制限）
-    /// has_point_in_geojson関数を使用してpolygon関数の結果を検証する
+    /// is_point_inside_polygon_geojson関数を使用してpolygon関数の結果を検証する
     #[test]
     fn consistency_among_functions() {
         let year = 2025;
@@ -301,8 +575,8 @@ mod tests {
 
             // polygon関数で生成されたGeoJSONに地点が含まれることを確認
             assert!(
-                has_point_in_geojson(&polygon_geojson, lat, lon),
-                "Point ({lat:.6},{lon:.6}) not found in polygon GeoJSON",
+                is_point_inside_polygon_geojson(&polygon_geojson, lat, lon),
+                "Point ({lat:.6},{lon:.6}) not inside polygon GeoJSON",
             );
         }
     }
