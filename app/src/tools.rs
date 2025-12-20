@@ -8,6 +8,16 @@ use dfuji_geo as geo;
 use dfuji_sun as sun;
 use tracing::{debug, info};
 
+/// normalize_sunset_naive_datetime
+/// 指定した緯度経度の日没時刻を計算し、日付をまたぐ場合に対応して正規化する関数
+/// # Arguments
+/// * `year` - 年
+/// * `month` - 月
+/// * `day` - 日
+/// * `lat` - 緯度（度）
+/// * `lon` - 経度（度）
+/// # Returns
+/// * 正規化された日没時刻の `chrono::NaiveDateTime`
 fn normalize_sunset_naive_datetime(
     year: i16,
     month: u8,
@@ -32,6 +42,14 @@ fn normalize_sunset_naive_datetime(
     date.and_hms_opt(hour, minute, second)
 }
 
+/// alignment_altitude_diff_at_distance
+/// 指定した観測地点からの距離における富士山と太陽の高度差を計算する関数
+/// # Arguments
+/// * `current_time` - 現在の日時（`chrono::NaiveDateTime`）
+/// * `az_from_fuji_deg` - 富士山から見た方位角（度）
+/// * `distance_m` - 観測地点からの距離（メートル）
+/// # Returns
+/// * 富士山と太陽の高度差（度）
 fn alignment_altitude_diff_at_distance(
     current_time: chrono::NaiveDateTime,
     az_from_fuji_deg: f64,
@@ -64,6 +82,15 @@ fn alignment_altitude_diff_at_distance(
     fuji_alt_deg - sun_alt_deg
 }
 
+/// alignment_altitude_diff_minus_target_at_distance
+/// 指定した観測地点からの距離における富士山と太陽の高度差から目標高度差を引いた値を計算する関数
+/// # Arguments
+/// * `current_time` - 現在の日時（`chrono::NaiveDateTime`）
+/// * `az_from_fuji_deg` - 富士山から見た方位角（度）
+/// * `distance_m` - 観測地点からの距離（メートル）
+/// * `target_altitude_diff_deg` - 目標高度差（度）
+/// # Returns
+/// * 富士山と太陽の高度差から目標高度差を引いた値（度）
 fn alignment_altitude_diff_minus_target_at_distance(
     current_time: chrono::NaiveDateTime,
     az_from_fuji_deg: f64,
@@ -74,6 +101,14 @@ fn alignment_altitude_diff_minus_target_at_distance(
         - target_altitude_diff_deg
 }
 
+/// solve_distance_for_altitude_diff
+/// 指定した高度差に基づいて、観測地点から目的地までの距離を二分法で求める関数
+/// # Arguments
+/// * `current_time` - 現在の日時（`chrono::NaiveDateTime`）
+/// * `az_from_fuji_deg` - 富士山から見た方位角（度）
+/// * `target_altitude_diff_deg` - 目標高度差（度）
+/// # Returns
+/// * 観測地点から目的地までの距離（メートル）
 fn solve_distance_for_altitude_diff(
     current_time: chrono::NaiveDateTime,
     az_from_fuji_deg: f64,
@@ -122,6 +157,13 @@ fn solve_distance_for_altitude_diff(
     None
 }
 
+/// solve_distance_for_altitude_match
+/// 指定した観測地点からの距離における富士山と太陽の高度を一致させる距離を二分法で求める関数
+/// # Arguments
+/// * `current_time` - 現在の日時（`chrono::NaiveDateTime`）
+/// * `az_from_fuji_deg` - 富士山から見た方位角（度）
+/// # Returns
+/// * 観測地点から目的地までの距離（メートル）
 fn solve_distance_for_altitude_match(
     current_time: chrono::NaiveDateTime,
     az_from_fuji_deg: f64,
