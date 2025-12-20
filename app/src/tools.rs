@@ -478,8 +478,16 @@ pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
     // under-approx になりやすいため（既知 point-hit の取りこぼし対策）。
     // point() の閾値は「観測点での az_diff」だが、polygon 生成は「富士山から見た方位 (az_from_fuji)」で近似する。
     // この2つは一致しないため、過小評価を避けるための最小限のパディングを入れる。
+    // 富士山から見た方位で近似する際の安全側パディング[deg]。
+    // 0.2deg は、実測ケースでの az_diff と az_from_fuji のズレを十分に覆いつつ、
+    // パディングを増やしすぎて領域が過度に膨らまない（false positive が増えすぎない）
+    // 範囲として経験的に決めている。
     const AZ_FROM_FUJI_PADDING_DEG: f64 = 0.2;
     let az_band = AZIMUTH_THRESHOLD + AZ_FROM_FUJI_PADDING_DEG;
+    // 方位帯域 [center_az_from_fuji_deg - az_band, +az_band] を線形サンプリングする分割数。
+    // 9 サンプルとすることで、約 4deg 幅の帯域に対して ≒0.5deg 間隔のサンプル密度となり、
+    // 計算コスト（distance 解を 2 回ずつ求めるコスト）を抑えつつ、az 方向の穴を作りにくい
+    // バランスを取っている。
     const AZ_SAMPLES: usize = 9;
 
     let mut candidates: Vec<(f64, f64)> = Vec::new();
