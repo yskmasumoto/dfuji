@@ -97,6 +97,10 @@ mod tests {
     use chrono::{Datelike, Timelike};
     use serde_json::Value;
 
+    const TOLERANCE: f64 = 1e-6; // 点の一致判定用
+    const COLLINEARITY_TOLERANCE: f64 = 1e-10; // 共線性判定用（線分上の点判定）
+    const BBOX_MARGIN: f64 = 1e-10; // バウンディングボックスのマージン
+
     /// is_point_inside_polygon_geojson
     /// polygon関数のGeoJSON出力（Point/LineString/Polygon）に対して、指定の緯度経度が含まれるかを判定する
     fn is_point_inside_polygon_geojson(geojson_str: &str, lat: f64, lon: f64) -> bool {
@@ -116,8 +120,6 @@ mod tests {
         };
 
         let geometry_type = geometry.get("type").and_then(|t| t.as_str()).unwrap_or("");
-
-        const TOLERANCE: f64 = 1e-6;
 
         match geometry_type {
             "Point" => {
@@ -169,13 +171,13 @@ mod tests {
                 let point_on_segment = |x: f64, y: f64, x1: f64, y1: f64, x2: f64, y2: f64| {
                     // cross product = 0 (collinear) + bounding box check
                     let cross = (x - x1) * (y2 - y1) - (y - y1) * (x2 - x1);
-                    if cross.abs() > 1e-10 {
+                    if cross.abs() > COLLINEARITY_TOLERANCE {
                         return false;
                     }
-                    let min_x = x1.min(x2) - 1e-10;
-                    let max_x = x1.max(x2) + 1e-10;
-                    let min_y = y1.min(y2) - 1e-10;
-                    let max_y = y1.max(y2) + 1e-10;
+                    let min_x = x1.min(x2) - BBOX_MARGIN;
+                    let max_x = x1.max(x2) + BBOX_MARGIN;
+                    let min_y = y1.min(y2) - BBOX_MARGIN;
+                    let max_y = y1.max(y2) + BBOX_MARGIN;
                     x >= min_x && x <= max_x && y >= min_y && y <= max_y
                 };
 
