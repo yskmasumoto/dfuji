@@ -174,6 +174,9 @@ fn solve_distance_for_altitude_match(
 /// 二分法や固定点反復の最大反復回数の定数定義
 const FIXED_POINT_MAX_ITER: usize = 10;
 
+/// 収束判定の閾値（度単位）
+const AZ_CONVERGENCE_THRESHOLD_DEG: f64 = 1e-6;
+
 /// estimate_center_az_from_fuji_for_time
 /// 指定した日時における、富士山から見た中心方位角を推定する関数
 /// # Arguments
@@ -216,7 +219,7 @@ fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) ->
             obs_lon,
         );
         let next = (sun_az_deg + 180.0).rem_euclid(360.0);
-        if angular_diff_deg(next, az_from_fuji_deg) < 1e-6 {
+        if angular_diff_deg(next, az_from_fuji_deg) < AZ_CONVERGENCE_THRESHOLD_DEG {
             az_from_fuji_deg = next;
             break;
         }
