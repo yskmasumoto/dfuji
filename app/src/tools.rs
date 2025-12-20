@@ -288,8 +288,12 @@ fn convex_hull(mut points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
         upper.push(*p);
     }
 
-    lower.pop();
-    upper.pop();
+    if lower.len() > 1 {
+        lower.pop();
+    }
+    if upper.len() > 1 {
+        upper.pop();
+    }
     lower.extend(upper);
     lower
 }
