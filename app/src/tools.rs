@@ -223,6 +223,14 @@ pub(crate) fn debug_estimate_center_az_from_fuji_for_time(
     estimate_center_az_from_fuji_for_time(current_time)
 }
 
+/// cross
+/// 3点の外積を計算するヘルパー関数
+/// # Arguments
+/// * `o` - 原点の座標 (x, y)
+/// * `a` - 点Aの座標 (x, y)
+/// * `b` - 点Bの座標 (x, y)
+/// # Returns
+/// * 外積の値
 fn cross(o: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
     (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
 }
@@ -234,6 +242,12 @@ fn cross(o: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
 /// 差分は浮動小数点の丸め誤差レベルとみなせるため、同一点として扱う。
 const DEDUP_TOLERANCE: f64 = 1e-12;
 
+/// convex_hull
+/// 2D点群の凸包を計算する関数（Andrew's monotone chainアルゴリズム）
+/// # Arguments
+/// * `points` - 2D点群のベクタ
+/// # Returns
+/// * 凸包を構成する点群のベクタ
 fn convex_hull(mut points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
     points.sort_by(|a, b| {
         a.0.partial_cmp(&b.0)
