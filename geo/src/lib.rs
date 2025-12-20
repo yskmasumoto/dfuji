@@ -227,6 +227,8 @@ pub fn vec2geojson(coords: &[(f64, f64)]) -> String {
                     && let Some(first) = ring.first().cloned()
                 {
                     ring.push(first);
+                } else {
+                    // 先頭と末尾が同じ場合は何もしない
                 }
                 Value::Polygon(vec![ring])
             }
@@ -247,4 +249,27 @@ pub fn vec2geojson(coords: &[(f64, f64)]) -> String {
 
     let geojson = geojson::GeoJson::from(feature_collection);
     geojson.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ring.first() != ring.last()の条件がtrueの場合のテストケース
+    #[test]
+    fn test_vec2geojson_open_polygon() {
+        let coords = vec![(139.0, 35.0), (140.0, 36.0), (141.0, 35.5)];
+        let geojson_str = vec2geojson(&coords);
+        let expected = r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[139.0,35.0],[140.0,36.0],[141.0,35.5],[139.0,35.0]]]},"properties":null}]}"#;
+        assert_eq!(geojson_str, expected);
+    }
+
+    /// ring.first() != ring.last()の条件がfalseの場合でも適切に動作するかのテストケース
+    #[test]
+    fn test_vec2geojson_already_closed_polygon() {
+        let coords = vec![(139.0, 35.0), (140.0, 36.0), (139.0, 35.0)];
+        let geojson_str = vec2geojson(&coords);
+        let expected = r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[139.0,35.0],[140.0,36.0],[139.0,35.0]]]},"properties":null}]}"#;
+        assert_eq!(geojson_str, expected);
+    }
 }
