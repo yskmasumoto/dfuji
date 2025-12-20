@@ -20,10 +20,7 @@ fn normalize_sunset_naive_datetime(
     const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
     let total_seconds = sunset_time.0 * 3600 + sunset_time.1 * 60 + sunset_time.2;
     let day_offset = total_seconds.div_euclid(SECONDS_PER_DAY);
-    let mut seconds_in_day = total_seconds.rem_euclid(SECONDS_PER_DAY);
-    if seconds_in_day < 0 {
-        seconds_in_day += SECONDS_PER_DAY;
-    }
+    let seconds_in_day = total_seconds.rem_euclid(SECONDS_PER_DAY);
 
     let hour = (seconds_in_day / 3600) as u32;
     let minute = ((seconds_in_day % 3600) / 60) as u32;
