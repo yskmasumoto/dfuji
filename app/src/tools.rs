@@ -188,13 +188,22 @@ fn cross(o: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
     (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
 }
 
+/// 重複点を除去する際に用いる座標誤差の許容値。
+///
+/// 緯度経度などの地理座標は f64 で表現しても、実データの精度はせいぜい
+/// 1e-8 度（赤道付近で約ミリメートルオーダー）程度であり、1e-12 度未満の
+/// 差分は浮動小数点の丸め誤差レベルとみなせるため、同一点として扱う。
+const DEDUP_TOLERANCE: f64 = 1e-12;
+
 fn convex_hull(mut points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
     points.sort_by(|a, b| {
         a.0.partial_cmp(&b.0)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
     });
-    points.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-12 && (a.1 - b.1).abs() < 1e-12);
+    points.dedup_by(|a, b| {
+        (a.0 - b.0).abs() < DEDUP_TOLERANCE && (a.1 - b.1).abs() < DEDUP_TOLERANCE
+    });
 
     if points.len() <= 2 {
         return points;
