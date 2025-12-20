@@ -171,6 +171,15 @@ fn solve_distance_for_altitude_match(
     solve_distance_for_altitude_diff(current_time, az_from_fuji_deg, 0.0)
 }
 
+/// 二分法や固定点反復の最大反復回数の定数定義
+const FIXED_POINT_MAX_ITER: usize = 10;
+
+/// estimate_center_az_from_fuji_for_time
+/// 指定した日時における、富士山から見た中心方位角を推定する関数
+/// # Arguments
+/// * `current_time` - 現在の日時（`chrono::NaiveDateTime`）
+/// # Returns
+/// * 富士山から見た中心方位角（度）
 fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) -> Option<f64> {
     // 「観測地点依存の太陽方位」を吸収するための固定点反復。
     // 反復: az := sun_az(observer_at(az, alt_match)) + 180
@@ -187,7 +196,7 @@ fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) ->
     );
 
     let mut az_from_fuji_deg = (sun_az_deg_fuji + 180.0).rem_euclid(360.0);
-    for _ in 0..10 {
+    for _ in 0..FIXED_POINT_MAX_ITER {
         let distance_m = solve_distance_for_altitude_match(current_time, az_from_fuji_deg)?;
         let (obs_lat, obs_lon) = geo::calc_destination_point(
             FUJI_LATITUDE,
