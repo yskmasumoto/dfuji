@@ -1,0 +1,19 @@
+{
+    "servers": {
+        "context7": {
+            "type": "http",
+            "url": "https://mcp.context7.com/mcp",
+            "headers": {
+                "CONTEXT7_API_KEY": "${input:context7-api-key}"
+            }
+        }   
+    },
+    "inputs": [
+    {
+      "id": "context7-api-key",
+      "type": "promptString",
+      "description": "API key for context7",
+      "password": true
+    }
+  ]
+}
