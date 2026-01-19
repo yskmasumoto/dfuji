@@ -12,4 +12,4 @@ tracing-subscriber = { version = "^0.3.20", features = [
 ] } # tracingログを表示するためのサブスクライバ
 chrono = "^0.4.42" # 結果表示やフォーマットで日時を扱うための補助（必要に応じて利用）
 dfuji-app = { path = "../app" } # dfuji-appライブラリクレートをローカルパス依存として参照
-colored = "^3.0.0"
+colored = "^3.1.1"
