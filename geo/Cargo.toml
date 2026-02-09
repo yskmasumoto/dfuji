@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 dfuji-core = { path = "../core" }
-geographiclib-rs = "^0.2.5"
+geographiclib-rs = "^0.2.6"
 geojson = "0.24.2"
