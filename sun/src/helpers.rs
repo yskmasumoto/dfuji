@@ -11,6 +11,9 @@ use astro::*;
 ///
 /// # 例
 /// ```rust
+/// use astro::time;
+/// use dfuji_sun::my_decimal_day;
+///
 /// let day = time::DayOfMonth {
 ///     day: 21,
 ///     hr: 11,
@@ -19,13 +22,17 @@ use astro::*;
 ///     time_zone: 9.0,
 /// };
 /// let decimal_day = my_decimal_day(&day);
+/// let expected = 21.0
+///     + 11.0 / 24.0
+///     + 45.0 / (24.0 * 60.0)
+///     - 9.0 / 24.0;
+/// assert!((decimal_day - expected).abs() < 1e-9);
 /// ```
-pub(crate) fn my_decimal_day(day: &time::DayOfMonth) -> f64 {
-    let day_fraction_local: f64 = (day.hr as f64) / 24.0
-        + (day.min as f64) / (24.0 * 60.0)
-        + (day.sec/* as f64 */) / (24.0 * 60.0 * 60.0);
+pub fn my_decimal_day(day: &time::DayOfMonth) -> f64 {
+    let day_fraction_local: f64 =
+        (day.hr as f64) / 24.0 + (day.min as f64) / (24.0 * 60.0) + day.sec / (24.0 * 60.0 * 60.0);
     let local_decimal_day: f64 = (day.day as f64) + day_fraction_local;
-    let utc_decimal_day: f64 = local_decimal_day - (day.time_zone/* as f64 */) / 24.0;
+    let utc_decimal_day: f64 = local_decimal_day - day.time_zone / 24.0;
     utc_decimal_day
 }
 

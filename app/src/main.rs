@@ -1,4 +1,4 @@
-use dfuji::app;
+use dfuji_app::app;
 
 fn init_tracing() {
     use tracing_subscriber::EnvFilter;
