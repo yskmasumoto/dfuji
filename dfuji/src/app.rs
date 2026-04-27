@@ -14,6 +14,32 @@ const INTERVAL_SECONDS: i64 = 30; // 30秒ごとの計算
 const AZIMUTH_THRESHOLD: f64 = 0.2; // 方位角の許容範囲
 const ELEVATION_THRESHOLD: f64 = 0.2; // 高度角の許容範囲
 
+/// Alignment
+/// 単一観測地点におけるダイヤモンド富士アライメントの検出結果
+/// # Fields
+/// * `unix_time` - 観測時刻（UNIX 時間、秒単位）
+/// * `az_diff` - 方位角の差（度）
+/// * `alt_diff` - 高度角の差（度）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Alignment {
+    pub unix_time: i64,
+    pub az_diff: f64,
+    pub alt_diff: f64,
+}
+
+/// RangeMatch
+/// `range` 探索における単一の候補
+/// # Fields
+/// * `lat` - 観測者の緯度（度）
+/// * `lon` - 観測者の経度（度）
+/// * `alignment` - その地点での検出結果
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RangeMatch {
+    pub lat: f64,
+    pub lon: f64,
+    pub alignment: Alignment,
+}
+
 /// angular_diff_deg
 /// 2つの角度の差の絶対値を0〜180度の範囲で返す
 /// # Arguments
@@ -26,6 +52,22 @@ fn angular_diff_deg(a: f64, b: f64) -> f64 {
     if diff > 180.0 { 360.0 - diff } else { diff }
 }
 
+/// angular_separation_deg
+/// 球面三角法による2点間の真の角距離を計算する
+/// celestial sphere 上の (az1, alt1) と (az2, alt2) の大円距離を返す
+/// # Arguments
+/// * `az1` / `alt1` - 1点目の方位角・高度角（度）
+/// * `az2` / `alt2` - 2点目の方位角・高度角（度）
+/// # Returns
+/// * 大円距離（度）
+fn angular_separation_deg(az1: f64, alt1: f64, az2: f64, alt2: f64) -> f64 {
+    let alt1_r = alt1.to_radians();
+    let alt2_r = alt2.to_radians();
+    let daz_r = (az1 - az2).to_radians();
+    let cos_sigma = alt1_r.sin() * alt2_r.sin() + alt1_r.cos() * alt2_r.cos() * daz_r.cos();
+    cos_sigma.clamp(-1.0, 1.0).acos().to_degrees()
+}
+
 /// point
 /// ダイヤモンド富士の観測可能性を単一地点で評価する関数
 /// # Arguments
@@ -35,7 +77,7 @@ fn angular_diff_deg(a: f64, b: f64) -> f64 {
 /// * `month` - 月
 /// * `day` - 日
 /// # Returns
-/// * 条件を満たした場合はその観測時刻（UNIX 時間、秒単位）を `Some` で返し、見つからなければ `None`
+/// * 条件を満たした場合は `Alignment` を `Some` で返し、見つからなければ `None`
 #[instrument(
     level = "info",
     skip(orig_lon),
@@ -45,7 +87,7 @@ fn angular_diff_deg(a: f64, b: f64) -> f64 {
         date = %format!("{:04}-{:02}-{:02}", year, month, day)
     )
 )]
-pub fn point(orig_lat: f64, orig_lon: f64, year: i16, month: u8, day: u8) -> Option<i64> {
+pub fn point(orig_lat: f64, orig_lon: f64, year: i16, month: u8, day: u8) -> Option<Alignment> {
     detect_alignment_for_location(orig_lat, orig_lon, year, month, day, true)
 }
 
@@ -56,7 +98,7 @@ pub fn point(orig_lat: f64, orig_lon: f64, year: i16, month: u8, day: u8) -> Opt
 /// * `lon_min` / `lon_max` / `lon_step` - 走査する経度の下限・上限・刻み幅（度）
 /// * `year` / `month` / `day` - 評価対象の日付
 /// # Returns
-/// * 条件を満たした `(lat, lon, unix_time)` のベクタ（見つからない場合は空）
+/// * 条件を満たした候補の `RangeMatch` ベクタ（見つからない場合は空）
 #[instrument(level = "info", skip(lat_step, lon_step))]
 pub fn range(
     lat_min: f64,
@@ -68,7 +110,7 @@ pub fn range(
     year: i16,
     month: u8,
     day: u8,
-) -> Vec<(f64, f64, i64)> {
+) -> Vec<RangeMatch> {
     let latitudes = build_range(lat_min, lat_max, lat_step);
     let longitudes = build_range(lon_min, lon_max, lon_step);
     if latitudes.is_empty() || longitudes.is_empty() {
@@ -79,16 +121,22 @@ pub fn range(
     let mut results = Vec::new();
     for lat in &latitudes {
         for lon in &longitudes {
-            if let Some(unix_time) =
+            if let Some(alignment) =
                 detect_alignment_for_location(*lat, *lon, year, month, day, false)
             {
                 info!(
                     latitude = lat,
                     longitude = lon,
-                    unix_time,
+                    unix_time = alignment.unix_time,
+                    az_diff = %format!("{:.3}", alignment.az_diff),
+                    alt_diff = %format!("{:.3}", alignment.alt_diff),
                     "Diamond Fuji alignment detected in range search"
                 );
-                results.push((*lat, *lon, unix_time));
+                results.push(RangeMatch {
+                    lat: *lat,
+                    lon: *lon,
+                    alignment,
+                });
             }
         }
     }
@@ -131,6 +179,12 @@ fn build_range(start: f64, end: f64, step: f64) -> Vec<f64> {
 
 /// detect_alignment_for_location
 /// 指定した観測地点と日付に対してダイヤモンド富士の観測可能性を評価する関数
+///
+/// 時間窓全体（日没2時間前〜日没）をスキャンし、太陽中心と富士山頂の球面角距離が
+/// 最小となる時刻を選び、その時刻の方位角差・高度角差が閾値内であればアライメント
+/// として返す。最初に閾値を満たした時刻で打ち切る方式と異なり、30秒ステップ起因の
+/// カスケード偽陽性が原理的に発生しない。
+///
 /// # Arguments
 /// * `obs_lat` - 観測者の緯度（度）
 /// * `obs_lon` - 観測者の経度（度）
@@ -139,7 +193,7 @@ fn build_range(start: f64, end: f64, step: f64) -> Vec<f64> {
 /// * `day` - 日
 /// * `log_enabled` - ログ出力を有効にするかどうか
 /// # Returns
-/// * 条件を満たした場合はその観測時刻（UNIX 時間、秒単位）を `Some` で返し、見つからなければ `None`
+/// * 条件を満たした場合は `Alignment` を `Some` で返し、見つからなければ `None`
 fn detect_alignment_for_location(
     obs_lat: f64,
     obs_lon: f64,
@@ -147,7 +201,7 @@ fn detect_alignment_for_location(
     month: u8,
     day: u8,
     log_enabled: bool,
-) -> Option<i64> {
+) -> Option<Alignment> {
     let fuji_az_deg = geo::geo::calc_azimuth(obs_lat, obs_lon, DEST_LAT, DEST_LON);
     let fuji_alt_deg = geo::geo::calc_altitude(
         obs_lat, obs_lon, 0.0, // 標高を0mと仮定
@@ -214,6 +268,9 @@ fn detect_alignment_for_location(
     let loop_n = MINUS_HOUR * 60 * 60 / INTERVAL_SECONDS;
     let tz = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
 
+    // ベストマッチ追跡: 球面角距離が最小の時刻を保持する
+    let mut best: Option<(i64, f64, f64, f64)> = None; // (unix_time, az_diff, alt_diff, sigma)
+
     for i in 0..=loop_n {
         let current_time = sunset_time_minus_2h + chrono::Duration::seconds(i * INTERVAL_SECONDS);
         let current_time_str = current_time.format("%Y-%m-%d %H:%M:%S").to_string();
@@ -243,6 +300,7 @@ fn detect_alignment_for_location(
 
         let az_diff = angular_diff_deg(sun_az_deg, fuji_az_deg);
         let alt_diff = (sun_alt_deg - fuji_alt_deg).abs();
+        let sigma = angular_separation_deg(sun_az_deg, sun_alt_deg, fuji_az_deg, fuji_alt_deg);
 
         if log_enabled {
             debug!(
@@ -251,56 +309,74 @@ fn detect_alignment_for_location(
                 sun_altitude_deg = %format!("{:.2}", sun_alt_deg),
                 fuji_azimuth_deg = %format!("{:.2}", fuji_az_deg),
                 fuji_altitude_deg = %format!("{:.2}", fuji_alt_deg),
+                angular_separation_deg = %format!("{:.4}", sigma),
                 "Apparent positions"
             );
         }
 
-        if az_diff < AZIMUTH_THRESHOLD && alt_diff < ELEVATION_THRESHOLD {
-            let unix_time = match tz.from_local_datetime(&current_time) {
-                LocalResult::Single(dt) => dt.timestamp(),
-                LocalResult::Ambiguous(dt1, dt2) => {
-                    if log_enabled {
-                        debug!(
-                            current_time = %current_time_str,
-                            first_candidate = %dt1,
-                            second_candidate = %dt2,
-                            "Ambiguous local time; selecting earliest candidate"
-                        );
-                    }
-                    dt1.timestamp()
+        let unix_time = match tz.from_local_datetime(&current_time) {
+            LocalResult::Single(dt) => dt.timestamp(),
+            LocalResult::Ambiguous(dt1, dt2) => {
+                if log_enabled {
+                    debug!(
+                        current_time = %current_time_str,
+                        first_candidate = %dt1,
+                        second_candidate = %dt2,
+                        "Ambiguous local time; selecting earliest candidate"
+                    );
                 }
-                LocalResult::None => {
-                    if log_enabled {
-                        debug!(
-                            current_time = %current_time_str,
-                            "Failed to convert candidate time to UNIX timestamp"
-                        );
-                    }
-                    continue;
-                }
-            };
-
-            if log_enabled {
-                info!(
-                    current_time = %current_time_str,
-                    latitude = obs_lat,
-                    longitude = obs_lon,
-                    azimuth_diff = %format!("{:.3}", az_diff),
-                    altitude_diff = %format!("{:.3}", alt_diff),
-                    unix_time,
-                    "Diamond Fuji alignment detected"
-                );
+                dt1.timestamp()
             }
-            return Some(unix_time);
+            LocalResult::None => {
+                if log_enabled {
+                    debug!(
+                        current_time = %current_time_str,
+                        "Failed to convert candidate time to UNIX timestamp"
+                    );
+                }
+                continue;
+            }
+        };
+
+        match best {
+            None => best = Some((unix_time, az_diff, alt_diff, sigma)),
+            Some((_, _, _, best_sigma)) if sigma < best_sigma => {
+                best = Some((unix_time, az_diff, alt_diff, sigma));
+            }
+            _ => {}
         }
+    }
+
+    let (unix_time, az_diff, alt_diff, sigma) = best?;
+
+    if az_diff >= AZIMUTH_THRESHOLD || alt_diff >= ELEVATION_THRESHOLD {
+        if log_enabled {
+            info!(
+                latitude = obs_lat,
+                longitude = obs_lon,
+                best_az_diff = %format!("{:.3}", az_diff),
+                best_alt_diff = %format!("{:.3}", alt_diff),
+                best_angular_separation_deg = %format!("{:.4}", sigma),
+                "Diamond Fuji alignment not detected (best candidate exceeds threshold)"
+            );
+        }
+        return None;
     }
 
     if log_enabled {
         info!(
             latitude = obs_lat,
             longitude = obs_lon,
-            "Diamond Fuji alignment not detected"
+            azimuth_diff = %format!("{:.3}", az_diff),
+            altitude_diff = %format!("{:.3}", alt_diff),
+            angular_separation_deg = %format!("{:.4}", sigma),
+            unix_time,
+            "Diamond Fuji alignment detected"
         );
     }
-    None
+    Some(Alignment {
+        unix_time,
+        az_diff,
+        alt_diff,
+    })
 }

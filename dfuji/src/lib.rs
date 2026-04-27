@@ -2,4 +2,4 @@ pub mod app;
 mod geo;
 mod sun;
 
-pub use app::{point, range};
+pub use app::{Alignment, RangeMatch, point, range};

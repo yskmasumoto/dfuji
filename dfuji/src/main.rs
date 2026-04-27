@@ -27,7 +27,10 @@ fn main() {
 
     // 実行
     match app::point(orig_lat, orig_lon, year, month, day) {
-        Some(unix_time) => println!("Diamond Fuji alignment detected at UNIX time {}", unix_time),
+        Some(alignment) => println!(
+            "Diamond Fuji alignment detected at UNIX time {} (az_diff={:.3}°, alt_diff={:.3}°)",
+            alignment.unix_time, alignment.az_diff, alignment.alt_diff
+        ),
         None => println!("Diamond Fuji alignment not detected in the evaluated window."),
     }
 }
