@@ -33,20 +33,25 @@ fn main() {
                 std::process::exit(1);
             }
             match dfuji_app::point(latitude, longitude, year, month, day) {
-                Some(unix_time) => {
-                    let ts = DateTime::<Utc>::from_timestamp(unix_time, 0)
+                Some(alignment) => {
+                    let ts = DateTime::<Utc>::from_timestamp(alignment.unix_time, 0)
                         .expect("valid UNIX timestamp");
                     info!(
-                        unix_time,
+                        unix_time = alignment.unix_time,
                         iso8601 = %ts.to_rfc3339(),
+                        az_diff = %format!("{:.3}", alignment.az_diff),
+                        alt_diff = %format!("{:.3}", alignment.alt_diff),
                         "Diamond Fuji alignment detected"
                     );
 
                     // println!でcolored表示するために、時間を代入したメッセージを作っておく
                     let msg = format!(
-                        "🟢 Diamond Fuji is visible at UNIX time {unix_time} ({})",
+                        "🟢 Diamond Fuji is visible at UNIX time {} ({})  az_diff={:.3}°  alt_diff={:.3}°",
+                        alignment.unix_time,
                         ts.with_timezone(&chrono::Local)
-                            .format("%Y-%m-%d %H:%M:%S %Z")
+                            .format("%Y-%m-%d %H:%M:%S %Z"),
+                        alignment.az_diff,
+                        alignment.alt_diff,
                     );
 
                     println!("{}", msg.green());
@@ -82,13 +87,18 @@ fn main() {
             } else {
                 println!("{}", "🟢 Diamond Fuji alignments found:".green());
                 println!("Found {} candidate(s):", matches.len());
-                for (lat, lon, unix_time) in matches {
-                    let ts = DateTime::<Utc>::from_timestamp(unix_time, 0)
+                for m in matches {
+                    let ts = DateTime::<Utc>::from_timestamp(m.alignment.unix_time, 0)
                         .expect("valid UNIX timestamp");
                     println!(
-                        "lat={lat:.5}, lon={lon:.5}, unix={unix_time} ({} Local)",
+                        "lat={:.5}, lon={:.5}, unix={} ({} Local)  az_diff={:.3}°  alt_diff={:.3}°",
+                        m.lat,
+                        m.lon,
+                        m.alignment.unix_time,
                         ts.with_timezone(&chrono::Local)
-                            .format("%Y-%m-%d %H:%M:%S %Z")
+                            .format("%Y-%m-%d %H:%M:%S %Z"),
+                        m.alignment.az_diff,
+                        m.alignment.alt_diff,
                     );
                 }
             }

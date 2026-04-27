@@ -14,4 +14,4 @@ pub mod tools;
 pub use dfuji_geo as geo;
 pub use dfuji_sun as sun;
 
-pub use app::{point, polygon, range};
+pub use app::{Alignment, RangeMatch, point, polygon, range};

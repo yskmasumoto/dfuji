@@ -3,6 +3,32 @@ use dfuji_geo::vec2geojson;
 
 use tracing::{info, instrument};
 
+/// Alignment
+/// 単一観測地点におけるダイヤモンド富士アライメントの検出結果
+/// # Fields
+/// * `unix_time` - 観測時刻（UNIX 時間、秒単位）
+/// * `az_diff` - 方位角の差（度）
+/// * `alt_diff` - 高度角の差（度）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Alignment {
+    pub unix_time: i64,
+    pub az_diff: f64,
+    pub alt_diff: f64,
+}
+
+/// RangeMatch
+/// `range` 探索における単一の候補
+/// # Fields
+/// * `lat` - 観測者の緯度（度）
+/// * `lon` - 観測者の経度（度）
+/// * `alignment` - その地点での検出結果
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RangeMatch {
+    pub lat: f64,
+    pub lon: f64,
+    pub alignment: Alignment,
+}
+
 /// point
 /// ダイヤモンド富士の観測可能性を単一地点で評価する関数
 /// # Arguments
@@ -12,7 +38,7 @@ use tracing::{info, instrument};
 /// * `month` - 月
 /// * `day` - 日
 /// # Returns
-/// * 条件を満たした場合はその観測時刻（UNIX 時間、秒単位）を `Some` で返し、見つからなければ `None`
+/// * 条件を満たした場合は `Alignment` を `Some` で返し、見つからなければ `None`
 #[instrument(
     level = "info",
     skip(orig_lon),
@@ -22,7 +48,7 @@ use tracing::{info, instrument};
         date = %format!("{:04}-{:02}-{:02}", year, month, day)
     )
 )]
-pub fn point(orig_lat: f64, orig_lon: f64, year: i16, month: u8, day: u8) -> Option<i64> {
+pub fn point(orig_lat: f64, orig_lon: f64, year: i16, month: u8, day: u8) -> Option<Alignment> {
     tools::detect_alignment_for_location(orig_lat, orig_lon, year, month, day, true)
 }
 
@@ -33,7 +59,7 @@ pub fn point(orig_lat: f64, orig_lon: f64, year: i16, month: u8, day: u8) -> Opt
 /// * `lon_min` / `lon_max` / `lon_step` - 走査する経度の下限・上限・刻み幅（度）
 /// * `year` / `month` / `day` - 評価対象の日付
 /// # Returns
-/// * 条件を満たした `(lat, lon, unix_time)` のベクタ（見つからない場合は空）
+/// * 条件を満たした候補の `RangeMatch` ベクタ（見つからない場合は空）
 #[allow(clippy::too_many_arguments)]
 #[instrument(level = "info", skip(lat_step, lon_step))]
 pub fn range(
@@ -46,7 +72,7 @@ pub fn range(
     year: i16,
     month: u8,
     day: u8,
-) -> Vec<(f64, f64, i64)> {
+) -> Vec<RangeMatch> {
     let latitudes = tools::build_range(lat_min, lat_max, lat_step);
     let longitudes = tools::build_range(lon_min, lon_max, lon_step);
     if latitudes.is_empty() || longitudes.is_empty() {
@@ -57,16 +83,22 @@ pub fn range(
     let mut results = Vec::new();
     for lat in &latitudes {
         for lon in &longitudes {
-            if let Some(unix_time) =
+            if let Some(alignment) =
                 tools::detect_alignment_for_location(*lat, *lon, year, month, day, false)
             {
                 info!(
                     latitude = lat,
                     longitude = lon,
-                    unix_time,
+                    unix_time = alignment.unix_time,
+                    az_diff = %format!("{:.3}", alignment.az_diff),
+                    alt_diff = %format!("{:.3}", alignment.alt_diff),
                     "Diamond Fuji alignment detected in range search"
                 );
-                results.push((*lat, *lon, unix_time));
+                results.push(RangeMatch {
+                    lat: *lat,
+                    lon: *lon,
+                    alignment,
+                });
             }
         }
     }
@@ -453,8 +485,9 @@ mod tests {
         let tz = chrono::FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
 
         for c in cases {
-            let unix = crate::point(c.lat, c.lon, c.year, c.month, c.day).expect("expected hit");
-            let dt = chrono::DateTime::from_timestamp(unix, 0)
+            let alignment =
+                crate::point(c.lat, c.lon, c.year, c.month, c.day).expect("expected hit");
+            let dt = chrono::DateTime::from_timestamp(alignment.unix_time, 0)
                 .expect("valid unix")
                 .with_timezone(&tz)
                 .naive_local();
@@ -539,8 +572,8 @@ mod tests {
 
         let mut aligned_samples = Vec::new();
         for (lon, lat) in candidates {
-            if let Some(point_time) = point(lat, lon, year, month, day) {
-                aligned_samples.push((lat, lon, point_time));
+            if let Some(alignment) = point(lat, lon, year, month, day) {
+                aligned_samples.push((lat, lon, alignment));
                 if aligned_samples.len() >= 3 {
                     break;
                 }
@@ -555,9 +588,9 @@ mod tests {
         // polygon出力は一度だけ生成し、各地点が含まれることを確認する
         let polygon_geojson = polygon(year, month, day);
 
-        for (lat, lon, point_time) in aligned_samples {
+        for (lat, lon, alignment) in aligned_samples {
             println!("[consistency] candidate lat/lon = ({:.6}, {:.6})", lat, lon);
-            println!("[consistency] point result = {:?}", point_time);
+            println!("[consistency] point result = {:?}", alignment);
 
             // range関数で同じ地点が含まれることを確認（刻み幅は最小範囲で固定）
             let results = range(lat, lat, 0.0001, lon, lon, 0.0001, year, month, day);
@@ -565,8 +598,10 @@ mod tests {
                 "[consistency] range search returned {} matches",
                 results.len()
             );
-            let found_in_range = results.iter().any(|(r_lat, r_lon, r_time)| {
-                (*r_lat - lat).abs() < 1e-9 && (*r_lon - lon).abs() < 1e-9 && *r_time == point_time
+            let found_in_range = results.iter().any(|m| {
+                (m.lat - lat).abs() < 1e-9
+                    && (m.lon - lon).abs() < 1e-9
+                    && m.alignment.unix_time == alignment.unix_time
             });
             assert!(
                 found_in_range,
