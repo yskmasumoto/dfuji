@@ -233,7 +233,7 @@ checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
 name = "dfuji-app"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "chrono",
  "dfuji-core",
@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "dfuji-cli"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "chrono",
  "clap",
@@ -258,11 +258,11 @@ dependencies = [
 
 [[package]]
 name = "dfuji-core"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 
 [[package]]
 name = "dfuji-geo"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "dfuji-core",
  "geographiclib-rs",
@@ -271,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "dfuji-sun"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "astro",
 ]
