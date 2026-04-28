@@ -1,6 +1,11 @@
 [package]
 name = "dfuji-core"
-version = "0.1.0-beta.1"
-edition = "2024"
+description = "dfuji 用の定数・パラメータ集約クレート（富士山座標、WGS84、閾値）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]

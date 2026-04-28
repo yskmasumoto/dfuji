@@ -1,7 +1,12 @@
 [package]
 name = "dfuji-geo"
-version = "0.1.0-beta.1"
-edition = "2024"
+description = "WGS84 楕円体に基づく地理座標計算ライブラリ（方位角・高度角・距離）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 dfuji-core = { path = "../core" }

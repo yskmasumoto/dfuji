@@ -1,7 +1,12 @@
 [package]
 name = "dfuji-sun"
-version = "0.1.0-beta.1"
-edition = "2024"
+description = "太陽位置計算ライブラリ（astro クレートのラッパ + 大気屈折補正）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 astro = "^2.0.0"

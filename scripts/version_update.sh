@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# version_update.sh - ワークスペース内の全 Cargo.toml の version を一括更新する
+# version_update.sh - ワークスペースのバージョンを一括更新する
 #
 # 使い方:
 #   ./scripts/version_update.sh <version>
@@ -9,9 +9,9 @@
 #   ./scripts/version_update.sh 0.1.0-beta.1
 #
 # 動作:
-#   1. app, cli, core, geo, sun の各 Cargo.toml の
-#      [package] 直下の version を <version> に書き換える
-#   2. Cargo.lock を更新する
+#   ルート Cargo.toml の [workspace.package] 直下の version を <version> に書き換え、
+#   Cargo.lock を更新する。各メンバークレートは `version.workspace = true` で
+#   この値を継承する構成のため、メンバー側の Cargo.toml は触らない。
 #
 # このスクリプトは git コミット / push は行わない。
 # 変更内容を `git diff` で確認し、ユーザー自身でコミット & プッシュしてから
@@ -31,34 +31,44 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
   exit 1
 fi
 
-CRATES=(app cli core geo sun)
-
 # リポジトリルートに移動
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-echo "==> updating workspace versions to ${VERSION}"
+ROOT_TOML="Cargo.toml"
+if [[ ! -f "$ROOT_TOML" ]]; then
+  echo "error: $ROOT_TOML not found" >&2
+  exit 1
+fi
 
-# [package] セクション直下の最初の `version = "..."` のみ置換する。
-# ([dependencies] 内の version 指定は触らない)
-for c in "${CRATES[@]}"; do
-  toml="${c}/Cargo.toml"
-  if [[ ! -f "$toml" ]]; then
-    echo "error: $toml not found" >&2
-    exit 1
-  fi
-  perl -i -pe '
-    BEGIN { $in_pkg = 0; $done = 0; }
-    if (/^\[package\]\s*$/)        { $in_pkg = 1; }
-    elsif (/^\[/)                  { $in_pkg = 0; }
-    if ($in_pkg && !$done && /^version\s*=\s*"[^"]*"/) {
-      s/^version\s*=\s*"[^"]*"/version = "'"$VERSION"'"/;
-      $done = 1;
-    }
-  ' "$toml"
-  echo "    $toml -> $(grep -m1 '^version' "$toml")"
-done
+echo "==> updating [workspace.package] version to ${VERSION}"
+
+# [workspace.package] セクション直下の最初の `version = "..."` のみ置換する。
+# 行末コメントが付いた `[workspace.package] # comment` 形式にも対応するため
+# セクションヘッダ判定は前方一致で行う。
+perl -i -pe '
+  BEGIN { $in_wpk = 0; $done = 0; }
+  if (/^\[workspace\.package\](\s|$|#)/) { $in_wpk = 1; }
+  elsif (/^\[/)                          { $in_wpk = 0; }
+  if ($in_wpk && !$done && /^version\s*=\s*"[^"]*"/) {
+    s/^version\s*=\s*"[^"]*"/version = "'"$VERSION"'"/;
+    $done = 1;
+  }
+' "$ROOT_TOML"
+
+# 確認: 置換できたか
+new_line="$(perl -ne '
+  BEGIN { $in_wpk = 0; }
+  if (/^\[workspace\.package\](\s|$|#)/) { $in_wpk = 1; }
+  elsif (/^\[/)                          { $in_wpk = 0; }
+  if ($in_wpk && /^version\s*=\s*"[^"]*"/) { print; exit; }
+' "$ROOT_TOML")"
+if [[ -z "$new_line" ]]; then
+  echo "error: failed to update [workspace.package] version (no version line found)" >&2
+  exit 1
+fi
+echo "    $ROOT_TOML -> $new_line"
 
 echo "==> updating Cargo.lock"
 cargo update --workspace --offline >/dev/null 2>&1 || cargo generate-lockfile >/dev/null
@@ -69,7 +79,7 @@ echo "    git diff --stat"
 echo "    git diff"
 echo
 echo "then commit & push, e.g.:"
-echo "    git add Cargo.lock app/Cargo.toml cli/Cargo.toml core/Cargo.toml geo/Cargo.toml sun/Cargo.toml"
+echo "    git add Cargo.toml Cargo.lock"
 echo "    git commit -m 'chore: bump version to ${VERSION}'"
 echo "    git push origin main"
 echo
