@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.1.0-beta.2] - 2026-04-28
+
+### Changed
+
+- `polygon` の精度を改善: 凸包による over-approximation を **順序付き envelope リング** に置き換え、バナナ状の真の可視帯形状を保つようにした
+- polygon 候補点に対し、**観測者視点の方位角差**（`point` / `range` と同じ判定基準）を実計算する事後フィルタを追加。これにより富士山視点サンプリング由来の過大評価が解消された
+- 二分法（`solve_distance_for_altitude_diff`）の収束判定を厳格化（残差 `< ELEVATION_THRESHOLD (0.2°)` → `< 1e-4°`、区間幅 1 m のフォールバック追加）。距離精度が数 km レベルから数 m レベルに向上
+
+### Added
+
+- `BISECTION_RESIDUAL_TOLERANCE_DEG` / `BISECTION_INTERVAL_TOLERANCE_M` を `core` クレートに追加（既存 `BISECTION_*` 定数と同グループ）
+
+### Fixed
+
+- 富士山視点の方位角サンプリングが 360°/0° 境界を跨ぐ稀な日付で、polygon リングが自己交差する潜在バグを修正（anchor 基準の相対角でソート）
+
+### Notes
+
+- 公開 API は変更なし（`polygon()` のシグネチャと GeoJSON 出力フォーマットは互換）
+- 既知の制約: 出力多角形の頂点数が増加（典型値 ~30 → ~1500）。実用に堪える頂点数への削減は次バージョン以降で検討
+
 ## [0.1.0-beta.1] - 2026-04-28
 
 初回ベータリリース。ダイヤモンド富士の観測可能性を計算するライブラリ・CLI の最初の公開バージョン。
@@ -29,5 +50,6 @@
 - リリース運用スクリプト `scripts/version_update.sh` / `scripts/release.sh`
 - CI ワークフロー（fmt-check / clippy `-D warnings` / test / build）
 
-[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.1...HEAD
+[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.2...HEAD
+[0.1.0-beta.2]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.1

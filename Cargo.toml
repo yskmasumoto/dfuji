@@ -12,7 +12,7 @@ resolver = "2" # 依存解決アルゴリズムとしてRust推奨の第2世代�
 # 各メンバーの Cargo.toml では `*.workspace = true` で継承する。
 # version 更新は `scripts/version_update.sh` でこのブロックの version を書き換える。
 [workspace.package]
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 edition = "2024"
 rust-version = "1.91.1"
 authors = ["yskmasumoto"]
