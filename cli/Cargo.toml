@@ -1,7 +1,12 @@
 [package] # CLIクレート自体のメタデータ定義
 name = "dfuji-cli" # CLIバイナリのクレート名
-version = "0.1.0"  # CLIのバージョン（ワークスペース内で任意に設定）
-edition = "2024"   # Rustエディション。ライブラリに合わせて2024を採用
+description = "ダイヤモンド富士の観測可能性を計算する CLI ツール"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies] # CLIで利用する依存クレート
 clap = { version = "^4.5", features = ["derive"] } # コマンドライン引数処理のためにclapを導入
