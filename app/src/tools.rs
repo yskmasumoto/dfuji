@@ -1,10 +1,10 @@
 use crate::app::Alignment;
 use chrono::{Datelike, FixedOffset, LocalResult, TimeZone, Timelike};
 use dfuji_core::{
-    AZIMUTH_THRESHOLD, BISECTION_HIGH_DISTANCE, BISECTION_INTERVAL_TOLERANCE_M,
-    BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, BISECTION_RESIDUAL_TOLERANCE_DEG,
-    CALCULATION_INTERVAL_SECONDS, ELEVATION_THRESHOLD, FUJI_ALTITUDE, FUJI_LATITUDE,
-    FUJI_LONGITUDE, OBSERVATION_OFFSET_HOURS,
+    AZ_BIN_WIDTH_DEG, AZ_FROM_FUJI_PADDING_DEG, AZIMUTH_THRESHOLD, BISECTION_HIGH_DISTANCE,
+    BISECTION_INTERVAL_TOLERANCE_M, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER,
+    BISECTION_RESIDUAL_TOLERANCE_DEG, CALCULATION_INTERVAL_SECONDS, ELEVATION_THRESHOLD,
+    FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, OBSERVATION_OFFSET_HOURS,
 };
 use dfuji_geo as geo;
 use dfuji_sun as sun;
@@ -569,42 +569,36 @@ pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
         return Vec::new();
     };
 
-    // ## 設計方針（精度改善版）
+    // ## 設計方針（方位ビン集約版）
     //
-    // 旧実装は (time × az_from_fuji) でサンプリングした候補点の **凸包** を polygon として返していた。
-    // これには 2 つの過大評価源があった:
-    //   (1) 富士山視点の方位角（az_from_fuji）と観測者視点の方位角差（az_diff）のズレを
-    //       経験的パディング (0.2°) で吸収していたが、過大に効くと帯域幅が水増しされる
-    //   (2) 凸包がバナナ状の真の可視帯の凹み部分を直線で埋めるため、内側の false positive が増える
+    // 旧実装は (time × az_from_fuji) のサンプル点を時刻順 envelope リングにそのまま並べていたため、
+    // 時刻ごとに中心方位がシフトし、サンプル粒度由来のステップが重畳して、出力リングが
+    // 時刻数 × AZ_SAMPLES × 2 ≈ 1500 頂点でギザつく問題があった。
     //
-    // 新実装では:
-    //   (a) 各候補点について **観測者視点の az_diff < AZIMUTH_THRESHOLD** を実計算してフィルタする
-    //       → 富士山視点パディングの過大分は事後に削られ、point/range と判定基準が一致する
-    //   (b) サンプル点を az_from_fuji でソートし、遠端（d_far）を方位角昇順、
-    //       近端（d_near）を降順に繋いだ **順序付き envelope リング** として返す
-    //       → 凸包による凹み充填がなくなり、バナナ形状を保つ。外周は CCW（GeoJSON 推奨向き）になる
+    // 新実装では時刻軸を **方位ビンごとに包絡** へ畳み込む:
+    //   1. 従来通り (time × az_from_fuji) でサンプリングし `(az, d_near, d_far)` を集める
+    //   2. 富士山視点方位を `AZ_BIN_WIDTH_DEG` 刻みのビンに振り分け、ビン内で
+    //        - `d_near` が **最小**（最も富士山寄り）の (lon, lat) を採用
+    //        - `d_far`  が **最大**（最も富士山から遠い）の (lon, lat) を採用
+    //   3. ビンを方位昇順に並べ、far 昇順 + near 降順でリング化
     //
-    // また、二分法の収束判定を `BISECTION_RESIDUAL_TOLERANCE_DEG` に厳格化済みであるため、
-    // 各サンプル点はほぼ厳密に「alt_diff = ±ELEVATION_THRESHOLD」の境界に乗る。
-    // パディング `AZ_FROM_FUJI_PADDING_DEG` は az_diff フィルタが過大分を吸収するため、
-    // 「取りこぼし防止のための余裕」だけを担う役割になっている（値が `AZIMUTH_THRESHOLD` と一致するのは
-    // 偶然ではなく、観測者視点で 1 閾値分の余裕を取れば富士視点のズレを覆えるという経験則による）。
-    const AZ_FROM_FUJI_PADDING_DEG: f64 = 0.2;
+    // 効果:
+    //   - 出力頂点数 ≈ 2 × (使用ビン数) で激減（典型 ~1500 → ~120）
+    //   - 各方位 1 ペアのみなので、ソート後のリングが原理的に滑らかになる
+    //   - 「全時刻の near 最小・far 最大」を取るため `point ⊆ polygon` の不変条件は
+    //     維持される（包絡を広げる方向の集約のみ）
+    //   - 時刻幅が遠端ほど大きいため、自然と「遠いほど大雑把」な精度配分になる
+    //
+    // 観測者視点 az_diff フィルタは候補点採用時に従来通り適用し、point/range と判定基準を揃える。
+    // パディング `AZ_FROM_FUJI_PADDING_DEG` は富士山視点と観測者視点のズレ吸収のための余裕として残す。
     let az_band = AZIMUTH_THRESHOLD + AZ_FROM_FUJI_PADDING_DEG;
     const AZ_SAMPLES: usize = 9;
 
-    /// EdgeSample
-    /// `create_lonlat_vec` 内で方位角ごとの境界点ペアを保持するサンプル単位。
-    /// # Fields
-    /// * `az_from_fuji_deg` - 富士山から見た方位角（度）
-    /// * `near` - alt_diff = +ELEVATION_THRESHOLD（fuji が sun より上に見える）境界の (lon, lat)。
-    ///   この条件は富士山に **近い** 距離で成立する
-    /// * `far` - alt_diff = -ELEVATION_THRESHOLD（fuji が sun より下に見える）境界の (lon, lat)。
-    ///   この条件は富士山から **遠い** 距離で成立する
+    // EdgeSample: 観測者視点フィルタ通過済みの (時刻, az_from_fuji) ペア。
+    // 最終的な near/far 距離計算はビン代表方位で再実施するため、ここでは座標を持たない。
     struct EdgeSample {
+        naive_time: chrono::NaiveDateTime,
         az_from_fuji_deg: f64,
-        near: (f64, f64),
-        far: (f64, f64),
     }
 
     let mut samples: Vec<EdgeSample> = Vec::new();
@@ -646,59 +640,152 @@ pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
                 continue;
             };
 
+            // 観測者視点 az_diff で事後フィルタ。near と far の両方が閾値内のときだけ
+            // 採用する。片側のみ通過するケースは方位帯の端で稀に発生するが、リング構築時の
+            // 自己交差 / 穴あきリスクを避けるために両側通過を必須とする。
             let (near_lat, near_lon) =
                 geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_near);
+            if observer_az_diff_deg(near_lat, near_lon, current_time) >= AZIMUTH_THRESHOLD {
+                continue;
+            }
             let (far_lat, far_lon) =
                 geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_far);
-
-            // 観測者視点 az_diff で事後フィルタ。near と far の両方が閾値内のときだけ
-            // EdgeSample として採用する。片側のみ通過するケースは方位帯の端で稀に発生するが、
-            // リング構築時の自己交差/穴あきリスクを避けるために両側通過を必須とする。
-            let near_az_diff = observer_az_diff_deg(near_lat, near_lon, current_time);
-            let far_az_diff = observer_az_diff_deg(far_lat, far_lon, current_time);
-            if near_az_diff >= AZIMUTH_THRESHOLD || far_az_diff >= AZIMUTH_THRESHOLD {
+            if observer_az_diff_deg(far_lat, far_lon, current_time) >= AZIMUTH_THRESHOLD {
                 continue;
             }
 
             samples.push(EdgeSample {
+                naive_time: current_time,
                 az_from_fuji_deg: az,
-                near: (near_lon, near_lat),
-                far: (far_lon, far_lat),
             });
         }
 
         offset_seconds += step_seconds;
     }
 
-    // 3 点未満では Polygon として有効なリングが構成できず、
-    // `vec2geojson` が Point/LineString を返すため内包判定が偽陰性になる。
-    // この極端ケースでは候補なしと扱う（実用上、有効な日付ではほぼ起きない）。
-    if samples.len() < 3 {
+    if samples.is_empty() {
         return Vec::new();
     }
 
-    // az_from_fuji を 360° 周期で扱うため、最初のサンプル方位を anchor とした
-    // [-180°, 180°) の相対角でソートする。生の角度でソートすると 359°/1° を跨ぐ
-    // ケースで「先頭→末尾」が大回りに繋がり、自己交差リングを生む。
-    let anchor = samples[0].az_from_fuji_deg;
+    // 方位ビン集約: 360°/0° 跨ぎを安全に扱うため、全サンプルの **循環平均** を anchor として
+    // [-180°, 180°) の相対角でビンキー（i32）を決める。`BTreeMap<i32, _>` がキー昇順に
+    // 自動整列するため、追加のソートは不要。
+    // 循環平均を使う理由: 「最初のサンプル」を anchor にすると `samples[0]` が方位帯の端に
+    // ある場合に anchor が偏り、ビン割り当てが非決定的になる。観測帯の中心付近に anchor が
+    // 来るよう循環平均を採用することで、`anchor` 由来のビン境界の揺らぎを抑える。
+    let anchor = {
+        let (sin_sum, cos_sum) = samples.iter().fold((0.0_f64, 0.0_f64), |(s, c), x| {
+            let r = x.az_from_fuji_deg.to_radians();
+            (s + r.sin(), c + r.cos())
+        });
+        sin_sum.atan2(cos_sum).to_degrees().rem_euclid(360.0)
+    };
     let relative_az = |az: f64| -> f64 {
         let d = (az - anchor).rem_euclid(360.0);
         if d > 180.0 { d - 360.0 } else { d }
     };
-    samples.sort_by(|a, b| {
-        relative_az(a.az_from_fuji_deg)
-            .partial_cmp(&relative_az(b.az_from_fuji_deg))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let bin_key = |az: f64| (relative_az(az) / AZ_BIN_WIDTH_DEG).round() as i32;
+
+    // 各サンプルをビンキーごとの時刻集合に振り分ける。`BTreeSet` を使うのは、同一時刻が
+    // 複数の方位サンプルから同じビンに落ちて重複登録されると、集約フェーズで同じ二分法を
+    // 余分に呼び出すため。重複排除で集約フェーズの計算量を削減する。
+    let mut bin_times: std::collections::BTreeMap<
+        i32,
+        std::collections::BTreeSet<chrono::NaiveDateTime>,
+    > = std::collections::BTreeMap::new();
+    for s in &samples {
+        bin_times
+            .entry(bin_key(s.az_from_fuji_deg))
+            .or_default()
+            .insert(s.naive_time);
+    }
+
+    // BinEdge: 方位ビンの代表方位における境界点ペア。
+    // - near: 全時刻のうち最も富士山に近い（near 最小距離）境界の (lon, lat)
+    // - far:  全時刻のうち最も富士山から遠い（far 最大距離）境界の (lon, lat)
+    struct BinEdge {
+        near: (f64, f64),
+        far: (f64, f64),
+    }
+
+    // 各ビンについて、ビン中央方位（= 代表方位）で `solve_distance_for_altitude_diff` を
+    // ビン内の各時刻について再計算し、ビン全時刻を通じた最近端 / 最遠端の境界点を採用する。
+    // サンプル時の方位（az_band 範囲内のいずれか）ではなく代表方位で距離を解き直すことで、
+    // 隣接ビン間の near/far が同じ方位刻みに揃い、リングが滑らかな折れ線になる。
+    //
+    // 観測者視点 az_diff フィルタはサンプリング時に既に通過済みで、ここでは再適用しない
+    // （代表方位とサンプル時方位の差は最大 az_band 程度で、再フィルタはビンを過剰に消失
+    // させ point の取りこぼしを招くため）。polygon は本来 over-approximation であり、
+    // point/range の判定とは個別に成立する。
+    let mut bins: std::collections::BTreeMap<i32, BinEdge> = std::collections::BTreeMap::new();
+    for (key, times) in &bin_times {
+        let bin_center_az = (anchor + (*key as f64) * AZ_BIN_WIDTH_DEG).rem_euclid(360.0);
+
+        let mut min_d_near = f64::INFINITY;
+        let mut max_d_far = f64::NEG_INFINITY;
+        let mut found_near: Option<(f64, f64)> = None;
+        let mut found_far: Option<(f64, f64)> = None;
+
+        for t in times {
+            let Some(d_near) =
+                solve_distance_for_altitude_diff(*t, bin_center_az, ELEVATION_THRESHOLD)
+            else {
+                continue;
+            };
+            let Some(d_far) =
+                solve_distance_for_altitude_diff(*t, bin_center_az, -ELEVATION_THRESHOLD)
+            else {
+                continue;
+            };
+
+            // 単調性の防御: 想定では d_near < d_far（高度差が距離に対して単調減少のため）だが、
+            // 方位帯の極端な端や日付境界では稀に逆転しうる。逆転したサンプルを採用するとリング
+            // のトポロジーが破綻するため、ここで弾く。
+            if d_near >= d_far {
+                continue;
+            }
+
+            let (near_lat, near_lon) =
+                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, bin_center_az, d_near);
+            let (far_lat, far_lon) =
+                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, bin_center_az, d_far);
+
+            if d_near < min_d_near {
+                min_d_near = d_near;
+                found_near = Some((near_lon, near_lat));
+            }
+            if d_far > max_d_far {
+                max_d_far = d_far;
+                found_far = Some((far_lon, far_lat));
+            }
+        }
+
+        if let (Some(near), Some(far)) = (found_near, found_far) {
+            bins.insert(*key, BinEdge { near, far });
+        } else {
+            // ビン内の全時刻で代表方位の二分法が解なし、もしくは単調性逆転で全棄却。
+            // 該当方位帯にリングの「穴」ができるため、可視化のため debug ログに残す。
+            debug!(
+                bin_key = key,
+                bin_center_az, "polygon: ビン内全時刻で境界点解なし、ビンをスキップ"
+            );
+        }
+    }
+
+    // 3 ビン未満では Polygon として有効なリングが構成できず、`vec2geojson` が
+    // Point/LineString を返すため内包判定が偽陰性になる。実用上は起きない。
+    if bins.len() < 3 {
+        return Vec::new();
+    }
 
     // far 昇順 + near 降順で閉リングを構築。バナナが東向きの場合、
     // 「東側の遠端を南→北」「西側の近端を北→南」となり外周は CCW を取る。
-    let mut ring: Vec<(f64, f64)> = Vec::with_capacity(samples.len() * 2);
-    for s in &samples {
-        ring.push(s.far);
+    let mut ring: Vec<(f64, f64)> = Vec::with_capacity(bins.len() * 2);
+    for b in bins.values() {
+        ring.push(b.far);
     }
-    for s in samples.iter().rev() {
-        ring.push(s.near);
+    for b in bins.values().rev() {
+        ring.push(b.near);
     }
     ring
 }
