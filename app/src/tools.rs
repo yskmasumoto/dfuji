@@ -1,7 +1,8 @@
 use crate::app::Alignment;
 use chrono::{Datelike, FixedOffset, LocalResult, TimeZone, Timelike};
 use dfuji_core::{
-    AZIMUTH_THRESHOLD, BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER,
+    AZIMUTH_THRESHOLD, BISECTION_HIGH_DISTANCE, BISECTION_INTERVAL_TOLERANCE_M,
+    BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, BISECTION_RESIDUAL_TOLERANCE_DEG,
     CALCULATION_INTERVAL_SECONDS, ELEVATION_THRESHOLD, FUJI_ALTITUDE, FUJI_LATITUDE,
     FUJI_LONGITUDE, OBSERVATION_OFFSET_HOURS,
 };
@@ -143,7 +144,9 @@ fn solve_distance_for_altitude_diff(
             mid,
             target_altitude_diff_deg,
         );
-        if f_mid.abs() < ELEVATION_THRESHOLD {
+        if f_mid.abs() < BISECTION_RESIDUAL_TOLERANCE_DEG
+            || (high - low) < BISECTION_INTERVAL_TOLERANCE_M
+        {
             return Some(mid);
         }
 
@@ -155,7 +158,7 @@ fn solve_distance_for_altitude_diff(
         }
     }
 
-    None
+    Some((low + high) / 2.0)
 }
 
 /// solve_distance_for_altitude_match
@@ -229,86 +232,41 @@ fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) ->
     Some(az_from_fuji_deg)
 }
 
+/// observer_az_diff_deg
+/// 指定した観測地点と時刻における「観測者視点の方位角差」（太陽方位角と富士山方位角の差）を返す。
+///
+/// `point` / `range` のヒット判定（`detect_alignment_for_location`）と同じ基準であり、
+/// polygon 候補点に対してこの値が `AZIMUTH_THRESHOLD` 未満かどうかを事後フィルタすることで、
+/// 富士山視点の方位サンプリング（`az_from_fuji`）が観測者視点に対してずれている分の
+/// 過大評価を排除できる。
+///
+/// # Arguments
+/// * `obs_lat` - 観測者の緯度（度）
+/// * `obs_lon` - 観測者の経度（度）
+/// * `current_time` - 評価時刻（`chrono::NaiveDateTime`）
+/// # Returns
+/// * 観測者から見た太陽方位と富士山方位の絶対差（度）
+fn observer_az_diff_deg(obs_lat: f64, obs_lon: f64, current_time: chrono::NaiveDateTime) -> f64 {
+    let fuji_az_deg = geo::calc_azimuth(obs_lat, obs_lon, FUJI_LATITUDE, FUJI_LONGITUDE);
+    let (sun_az_deg, _) = sun::calc_sun_az_and_alt(
+        current_time.year() as i16,
+        current_time.month() as u8,
+        current_time.day() as u8,
+        current_time.hour() as u8,
+        current_time.minute() as u8,
+        current_time.second() as f64,
+        9.0,
+        obs_lat,
+        obs_lon,
+    );
+    angular_diff_deg(sun_az_deg, fuji_az_deg)
+}
+
 #[cfg(test)]
 pub(crate) fn debug_estimate_center_az_from_fuji_for_time(
     current_time: chrono::NaiveDateTime,
 ) -> Option<f64> {
     estimate_center_az_from_fuji_for_time(current_time)
-}
-
-/// cross
-/// 3点の外積を計算するヘルパー関数
-/// # Arguments
-/// * `o` - 原点の座標 (x, y)
-/// * `a` - 点Aの座標 (x, y)
-/// * `b` - 点Bの座標 (x, y)
-/// # Returns
-/// * 外積の値
-fn cross(o: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
-    (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
-}
-
-/// 重複点を除去する際に用いる座標誤差の許容値。
-///
-/// 緯度経度などの地理座標は f64 で表現しても、実データの精度はせいぜい
-/// 1e-8 度（赤道付近で約ミリメートルオーダー）程度であり、1e-12 度未満の
-/// 差分は浮動小数点の丸め誤差レベルとみなせるため、同一点として扱う。
-const DEDUP_TOLERANCE: f64 = 1e-12;
-
-/// convex_hull
-/// 2D点群の凸包を計算する関数（Andrew's monotone chainアルゴリズム）
-/// # Arguments
-/// * `points` - 2D点群のベクタ
-/// # Returns
-/// * 凸包を構成する点群のベクタ
-fn convex_hull(mut points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
-    points.sort_by(|a, b| {
-        a.0.partial_cmp(&b.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-    });
-    points.dedup_by(|a, b| {
-        (a.0 - b.0).abs() < DEDUP_TOLERANCE && (a.1 - b.1).abs() < DEDUP_TOLERANCE
-    });
-
-    if points.len() <= 2 {
-        return points;
-    }
-
-    let mut lower: Vec<(f64, f64)> = Vec::new();
-    for p in &points {
-        while lower.len() >= 2 {
-            let n = lower.len();
-            if cross(lower[n - 2], lower[n - 1], *p) <= 0.0 {
-                lower.pop();
-            } else {
-                break;
-            }
-        }
-        lower.push(*p);
-    }
-
-    let mut upper: Vec<(f64, f64)> = Vec::new();
-    for p in points.iter().rev() {
-        while upper.len() >= 2 {
-            let n = upper.len();
-            if cross(upper[n - 2], upper[n - 1], *p) <= 0.0 {
-                upper.pop();
-            } else {
-                break;
-            }
-        }
-        upper.push(*p);
-    }
-
-    if lower.len() > 1 {
-        lower.pop();
-    }
-    if upper.len() > 1 {
-        upper.pop();
-    }
-    lower.extend(upper);
-    lower
 }
 
 /// angular_diff_deg
@@ -611,26 +569,45 @@ pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
         return Vec::new();
     };
 
-    let alt_deltas = [-ELEVATION_THRESHOLD, ELEVATION_THRESHOLD];
-
-    // time×az_from_fuji のサンプル点群から凸包を取って over-approximation する。
-    // 「時刻によって許容領域が回転/移動する」ケースで、単純な time-sweep リングは
-    // under-approx になりやすいため（既知 point-hit の取りこぼし対策）。
-    // point() の閾値は「観測点での az_diff」だが、polygon 生成は「富士山から見た方位 (az_from_fuji)」で近似する。
-    // この2つは一致しないため、過小評価を避けるための最小限のパディングを入れる。
-    // 富士山から見た方位で近似する際の安全側パディング[deg]。
-    // 0.2deg は、実測ケースでの az_diff と az_from_fuji のズレを十分に覆いつつ、
-    // パディングを増やしすぎて領域が過度に膨らまない（false positive が増えすぎない）
-    // 範囲として経験的に決めている。
+    // ## 設計方針（精度改善版）
+    //
+    // 旧実装は (time × az_from_fuji) でサンプリングした候補点の **凸包** を polygon として返していた。
+    // これには 2 つの過大評価源があった:
+    //   (1) 富士山視点の方位角（az_from_fuji）と観測者視点の方位角差（az_diff）のズレを
+    //       経験的パディング (0.2°) で吸収していたが、過大に効くと帯域幅が水増しされる
+    //   (2) 凸包がバナナ状の真の可視帯の凹み部分を直線で埋めるため、内側の false positive が増える
+    //
+    // 新実装では:
+    //   (a) 各候補点について **観測者視点の az_diff < AZIMUTH_THRESHOLD** を実計算してフィルタする
+    //       → 富士山視点パディングの過大分は事後に削られ、point/range と判定基準が一致する
+    //   (b) サンプル点を az_from_fuji でソートし、遠端（d_far）を方位角昇順、
+    //       近端（d_near）を降順に繋いだ **順序付き envelope リング** として返す
+    //       → 凸包による凹み充填がなくなり、バナナ形状を保つ。外周は CCW（GeoJSON 推奨向き）になる
+    //
+    // また、二分法の収束判定を `BISECTION_RESIDUAL_TOLERANCE_DEG` に厳格化済みであるため、
+    // 各サンプル点はほぼ厳密に「alt_diff = ±ELEVATION_THRESHOLD」の境界に乗る。
+    // パディング `AZ_FROM_FUJI_PADDING_DEG` は az_diff フィルタが過大分を吸収するため、
+    // 「取りこぼし防止のための余裕」だけを担う役割になっている（値が `AZIMUTH_THRESHOLD` と一致するのは
+    // 偶然ではなく、観測者視点で 1 閾値分の余裕を取れば富士視点のズレを覆えるという経験則による）。
     const AZ_FROM_FUJI_PADDING_DEG: f64 = 0.2;
     let az_band = AZIMUTH_THRESHOLD + AZ_FROM_FUJI_PADDING_DEG;
-    // 方位帯域 [center_az_from_fuji_deg - az_band, +az_band] を線形サンプリングする分割数。
-    // 9 サンプルとすることで、約 4deg 幅の帯域に対して ≒0.5deg 間隔のサンプル密度となり、
-    // 計算コスト（distance 解を 2 回ずつ求めるコスト）を抑えつつ、az 方向の穴を作りにくい
-    // バランスを取っている。
     const AZ_SAMPLES: usize = 9;
 
-    let mut candidates: Vec<(f64, f64)> = Vec::new();
+    /// EdgeSample
+    /// `create_lonlat_vec` 内で方位角ごとの境界点ペアを保持するサンプル単位。
+    /// # Fields
+    /// * `az_from_fuji_deg` - 富士山から見た方位角（度）
+    /// * `near` - alt_diff = +ELEVATION_THRESHOLD（fuji が sun より上に見える）境界の (lon, lat)。
+    ///   この条件は富士山に **近い** 距離で成立する
+    /// * `far` - alt_diff = -ELEVATION_THRESHOLD（fuji が sun より下に見える）境界の (lon, lat)。
+    ///   この条件は富士山から **遠い** 距離で成立する
+    struct EdgeSample {
+        az_from_fuji_deg: f64,
+        near: (f64, f64),
+        far: (f64, f64),
+    }
+
+    let mut samples: Vec<EdgeSample> = Vec::new();
 
     let start_offset_seconds = -(OBSERVATION_OFFSET_HOURS * 60 * 60);
     let end_offset_seconds = 0;
@@ -658,28 +635,72 @@ pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
             };
             let az = (center_az_from_fuji_deg + (-az_band + 2.0 * az_band * t)).rem_euclid(360.0);
 
-            let Some(d_top) = solve_distance_for_altitude_diff(current_time, az, alt_deltas[1])
+            let Some(d_near) =
+                solve_distance_for_altitude_diff(current_time, az, ELEVATION_THRESHOLD)
             else {
                 continue;
             };
-            let Some(d_bottom) = solve_distance_for_altitude_diff(current_time, az, alt_deltas[0])
+            let Some(d_far) =
+                solve_distance_for_altitude_diff(current_time, az, -ELEVATION_THRESHOLD)
             else {
                 continue;
             };
 
-            let (top_lat, top_lon) =
-                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_top);
-            let (bottom_lat, bottom_lon) =
-                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_bottom);
+            let (near_lat, near_lon) =
+                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_near);
+            let (far_lat, far_lon) =
+                geo::calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, az, d_far);
 
-            candidates.push((top_lon, top_lat));
-            candidates.push((bottom_lon, bottom_lat));
+            // 観測者視点 az_diff で事後フィルタ。near と far の両方が閾値内のときだけ
+            // EdgeSample として採用する。片側のみ通過するケースは方位帯の端で稀に発生するが、
+            // リング構築時の自己交差/穴あきリスクを避けるために両側通過を必須とする。
+            let near_az_diff = observer_az_diff_deg(near_lat, near_lon, current_time);
+            let far_az_diff = observer_az_diff_deg(far_lat, far_lon, current_time);
+            if near_az_diff >= AZIMUTH_THRESHOLD || far_az_diff >= AZIMUTH_THRESHOLD {
+                continue;
+            }
+
+            samples.push(EdgeSample {
+                az_from_fuji_deg: az,
+                near: (near_lon, near_lat),
+                far: (far_lon, far_lat),
+            });
         }
 
         offset_seconds += step_seconds;
     }
 
-    convex_hull(candidates)
+    // 3 点未満では Polygon として有効なリングが構成できず、
+    // `vec2geojson` が Point/LineString を返すため内包判定が偽陰性になる。
+    // この極端ケースでは候補なしと扱う（実用上、有効な日付ではほぼ起きない）。
+    if samples.len() < 3 {
+        return Vec::new();
+    }
+
+    // az_from_fuji を 360° 周期で扱うため、最初のサンプル方位を anchor とした
+    // [-180°, 180°) の相対角でソートする。生の角度でソートすると 359°/1° を跨ぐ
+    // ケースで「先頭→末尾」が大回りに繋がり、自己交差リングを生む。
+    let anchor = samples[0].az_from_fuji_deg;
+    let relative_az = |az: f64| -> f64 {
+        let d = (az - anchor).rem_euclid(360.0);
+        if d > 180.0 { d - 360.0 } else { d }
+    };
+    samples.sort_by(|a, b| {
+        relative_az(a.az_from_fuji_deg)
+            .partial_cmp(&relative_az(b.az_from_fuji_deg))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // far 昇順 + near 降順で閉リングを構築。バナナが東向きの場合、
+    // 「東側の遠端を南→北」「西側の近端を北→南」となり外周は CCW を取る。
+    let mut ring: Vec<(f64, f64)> = Vec::with_capacity(samples.len() * 2);
+    for s in &samples {
+        ring.push(s.far);
+    }
+    for s in samples.iter().rev() {
+        ring.push(s.near);
+    }
+    ring
 }
 
 #[cfg(test)]

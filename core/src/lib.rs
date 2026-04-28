@@ -55,3 +55,16 @@ pub const BISECTION_HIGH_DISTANCE: f64 = 200_000.0;
 
 /// 最大反復回数
 pub const BISECTION_MAX_ITER: usize = 100;
+
+/// 二分法の収束判定に用いる残差の許容値（度）。
+///
+/// 高度差残差がこの値未満になった時点で収束とみなす。`ELEVATION_THRESHOLD` を
+/// 流用すると polygon の境界が数 km レベルでずれるため、距離に換算して数十センチ〜
+/// 数メートル相当の精度（1e-4°）を採用している。
+pub const BISECTION_RESIDUAL_TOLERANCE_DEG: f64 = 1e-4;
+
+/// 二分法の補助収束判定として用いる、探索区間幅の許容値（メートル）。
+///
+/// 残差ベースで収束しないケースでも、区間幅がこの値未満になれば距離精度として
+/// 十分とみなして打ち切る。
+pub const BISECTION_INTERVAL_TOLERANCE_M: f64 = 1.0;
