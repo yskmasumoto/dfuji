@@ -68,3 +68,17 @@ pub const BISECTION_RESIDUAL_TOLERANCE_DEG: f64 = 1e-4;
 /// 残差ベースで収束しないケースでも、区間幅がこの値未満になれば距離精度として
 /// 十分とみなして打ち切る。
 pub const BISECTION_INTERVAL_TOLERANCE_M: f64 = 1.0;
+
+/// polygon サンプリング時に富士山視点方位帯を `AZIMUTH_THRESHOLD` から拡張する追加幅（度）。
+///
+/// 富士山視点の方位（`az_from_fuji`）と観測者視点の方位差（`az_diff`）の間にあるズレを
+/// 取りこぼさないための余裕。観測者視点 az_diff フィルタが過大分を吸収するため、
+/// 本値は「取りこぼし防止のための余裕」だけを担う。
+pub const AZ_FROM_FUJI_PADDING_DEG: f64 = 0.2;
+
+/// polygon 出力リングの方位ビン幅（度）。
+///
+/// 各方位ビンの代表方位で全時刻の最近端最小・最遠端最大を集約することで、出力頂点数を
+/// `観測帯幅 / AZ_BIN_WIDTH_DEG × 2` 程度に削減する。値を狭めるほどリングがバナナ状の
+/// 凹みカーブを忠実に追えるが、頂点数は増える。
+pub const AZ_BIN_WIDTH_DEG: f64 = 0.2;

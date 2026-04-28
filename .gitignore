@@ -22,3 +22,8 @@ target
 
 # VSCode
 .vscode/
+
+# ローカル作業ノート（手元解析メモ・バグ調査用）
+BUG.md
+range-accuracy-analysis.md
+polygon-*.geojson
