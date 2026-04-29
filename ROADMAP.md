@@ -6,30 +6,7 @@ dfuji プロジェクトの今後の対応方針・既知の課題・改善候�
 
 ## 既知バグ
 
-### BUG-001: 時間ループ終端が日没ぴったり固定で、東方面の観測ラインを取りこぼす
-
-**影響範囲:** `polygon` / `point` / `range` の 3 API すべて
-
-**症状:**
-- 2026-02-24 の `polygon` を出力すると、千葉県本土以東に伸びず羽田付近で途切れる
-- ダイヤモンド・パール富士マップ（dpfm.creazy.net）で同日付を確認すると、千葉県を貫いて太平洋上まで観測ラインが伸びている
-- `point` / `range` でも、観測時刻が「富士山地点の日没後」にあたる地点（富士山から東に離れた地点）で `None` を返す可能性
-
-**原因:**
-`app/src/tools.rs` の時間ループ終端 `end_offset_seconds = 0`（富士山地点の日没ちょうど）固定。
-ダイヤモンド富士の観測時刻は「観測者から見て太陽が富士山頂と重なる瞬間」で、観測者位置によって富士山地点の日没時刻と数分〜数十分ズレる。富士山から遠い東方向の観測者ほど、観測時刻が日没後にずれる。
-
-**修正方針候補:**
-
-1. **案 A: 単純な終端拡張** — `OBSERVATION_AFTER_SUNSET_MINUTES` 等を `core` に追加し、ループ終端を `+N分` に拡張。最小変更だが朝側（日の出方向）の対称性は得られない。
-2. **案 B: 「日没近傍 ±N 分」概念に整理** — `OBSERVATION_OFFSET_HOURS` を対称ウィンドウ（`OBSERVATION_WINDOW_BEFORE_HOURS` / `OBSERVATION_WINDOW_AFTER_HOURS`）に分離。
-3. **案 C: 観測者地点の現地日没時刻基準に切替** — `point` / `range` は観測者位置の現地日没時刻を起点にする。`polygon` はビン代表方位ごとに観測者位置の日没時刻を起点にする。物理的に最も正しいが、構造変更が大きい。
-
-**推奨:** まず案 A で範囲を伸ばして検証 → 問題が出たら案 B / C を検討。
-
-**関連回帰テスト:**
-- 修正後、東方面遠距離地点（千葉等）で `point()` がヒットする回帰テストを新規追加
-- 既存の固定座標テスト（`multiple_point_hit_locations_are_inside_polygon` 等）が新時刻範囲で通るかを再確認
+現在オープンな既知バグはなし。修正済みの履歴は CHANGELOG.md を参照。
 
 ---
 
@@ -48,7 +25,11 @@ dfuji プロジェクトの今後の対応方針・既知の課題・改善候�
 
 ### IMPROVE-002: `BISECTION_HIGH_DISTANCE` の 200 km 上限見直し
 
-地平線距離の物理限界は観測者標高 0 m なら ~220 km。標高考慮（IMPROVE-001）と組み合わせて、上限を観測者標高に応じて動的に決める形にするか、単純に 250 km 程度まで拡張する。
+`core/src/lib.rs` の `BISECTION_HIGH_DISTANCE = 200_000 m` が二分法の上限となっており、富士山から ~195 km 以遠の地点で `d_far`（`fuji_alt - sun_alt = -0.2°` 境界）が解けず、その方位帯のサンプルが dropped され polygon に含まれない。
+
+**具体例（2026-02-24）:** 銚子 (35.73, 140.83) は富士山から 195.1 km、`point()` ではヒットする（az_diff=0.118°, alt_diff=0.138°）が `polygon()` に内包されない。
+
+**対応:** 観測者標高 0 m の地平線下没距離が ~219 km なので、固定値を 220 km 程度まで拡張するだけで現実的にカバー範囲が広がる。標高 API（IMPROVE-001）は本当に必要になったときに別途検討する温度感。
 
 ### IMPROVE-003: `bin_times` と `bins` の二段階 BTreeMap 一本化
 
@@ -66,6 +47,12 @@ dfuji プロジェクトの今後の対応方針・既知の課題・改善候�
 
 現在 `Notes` セクションを使っているが、Keep a Changelog 1.1.0 仕様外。`Changed` への統合か、設計判断は別ファイル（`ARCHITECTURE.md` 等）に分離するか検討。
 
+### IMPROVE-007: `sun::calc_sunset_time` の日跨ぎ情報消失
+
+`sun/src/lib.rs` の `calc_sunset_time` は `total_seconds.rem_euclid(SECONDS_PER_DAY)` で 0〜86399 秒に正規化した `(hour, minute, second)` を返すため、`tools.rs` の `normalize_sunset_naive_datetime` / `detect_alignment_for_location` が `div_euclid` で `day_offset` を復元しようとしても情報が既に失われている（`day_offset` は常に 0）。
+
+実害は関東〜中部の通常日付では発生しない（日没は JST 16〜17 時台で日跨ぎが起きない）が、API 設計として戻り値を `i64`（UNIX 秒）または `Option<NaiveDateTime>` に変えれば呼び出し側が大幅に簡素化される。
+
 ---
 
 ## 完了済み
@@ -74,3 +61,4 @@ CHANGELOG の `[Unreleased]` セクション、および各リリースの履歴
 
 - 0.1.0-beta.2: polygon 精度改善（凸包 → envelope リング、二分法収束厳格化）
 - Unreleased: polygon 頂点削減（envelope リング → 方位ビン集約、~1500 → ~180 頂点）
+- Unreleased: BUG-001 修正（`estimate_center_az_from_fuji_for_time` の固定点反復が球面測地補正を逆方向に積み上げ、富士山から遠い東方向の polygon が縮退する症状）

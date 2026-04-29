@@ -343,6 +343,15 @@ mod tests {
                     (35.707_999_654_324_603, 139.595_431_050_877_494),
                 ],
             },
+            // BUG-001 回帰: 富士山から ~156 km 東の千葉点。fixed-point iteration の
+            // 球面測地補正の符号誤りで center_az が真値から離れ、polygon 出力が
+            // 千葉県本土以東に伸びない症状を防ぐ。
+            Case {
+                year: 2026,
+                month: 2,
+                day: 24,
+                points: &[(35.66, 140.41)],
+            },
         ];
 
         for case in cases {
@@ -536,14 +545,12 @@ mod tests {
             println!("--- {:04}-{:02}-{:02} ---", c.year, c.month, c.day);
             println!("hit time (JST naive): {dt}");
             println!("az_from_fuji(deg)={az_from_fuji:.6}");
-            println!("center_estimate={center:?}");
-            if let Some(center) = center {
-                let d = crate::tools::angular_diff_deg(az_from_fuji, center);
-                println!(
-                    "angular_diff(az_from_fuji, center)={d:.6} (az_band={:.3})",
-                    dfuji_core::AZIMUTH_THRESHOLD
-                );
-            }
+            println!("center_estimate={center:.6}");
+            let d = crate::tools::angular_diff_deg(az_from_fuji, center);
+            println!(
+                "angular_diff(az_from_fuji, center)={d:.6} (az_band={:.3})",
+                dfuji_core::AZIMUTH_THRESHOLD
+            );
             println!(
                 "point-metrics: sun_az={sun_az:.3} fuji_az={fuji_az_from_obs:.3} az_diff={az_diff:.6} (thr={:.3})",
                 dfuji_core::AZIMUTH_THRESHOLD
@@ -554,6 +561,224 @@ mod tests {
             );
             println!("inside_polygon={inside}");
         }
+    }
+
+    /// diagnose_chiba_polygon_miss
+    /// BUG-001 診断専用テスト（無視）。`point()` でヒットする千葉点が `polygon()` に
+    /// 内包されない症状について、polygon パイプラインの各段階で何が起きているかを
+    /// 実測値ベースで切り分けるためのデバッグ出力を行う。
+    ///
+    /// 出力内容:
+    /// - 千葉点の真方位 `az_from_fuji` と富士山までの距離
+    /// - 富士山日没（polygon の base_time）と観測者日没（point の基準）の差
+    /// - 各 30 秒刻み時刻での: center_az / 千葉 az が az_band 内か / d_near, d_far / 観測者 az_diff (near, far) / フィルタ通過判定
+    /// - 全時刻通して千葉 az 方向の max(d_far) と、千葉までの距離との比較
+    #[ignore]
+    #[test]
+    fn diagnose_chiba_polygon_miss() {
+        use chrono::Duration;
+
+        const YEAR: i16 = 2026;
+        const MONTH: u8 = 2;
+        const DAY: u8 = 24;
+        const CHIBA_LAT: f64 = 35.66;
+        const CHIBA_LON: f64 = 140.41;
+
+        // 千葉の真方位（富士山視点）と距離（メートル平面近似で十分）
+        let az_from_fuji_chiba = dfuji_geo::calc_azimuth(
+            dfuji_core::FUJI_LATITUDE,
+            dfuji_core::FUJI_LONGITUDE,
+            CHIBA_LAT,
+            CHIBA_LON,
+        );
+        let dlat = (CHIBA_LAT - dfuji_core::FUJI_LATITUDE).to_radians();
+        let mean_lat = ((CHIBA_LAT + dfuji_core::FUJI_LATITUDE) / 2.0).to_radians();
+        let dlon = (CHIBA_LON - dfuji_core::FUJI_LONGITUDE).to_radians() * mean_lat.cos();
+        let chiba_distance_m = (dlat.powi(2) + dlon.powi(2)).sqrt() * 6_371_000.0;
+
+        // point() は信頼できる基準
+        let alignment = crate::point(CHIBA_LAT, CHIBA_LON, YEAR, MONTH, DAY)
+            .expect("Chiba should hit at 2026-02-24");
+        let tz = chrono::FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+        let hit_time = chrono::DateTime::from_timestamp(alignment.unix_time, 0)
+            .expect("valid unix")
+            .with_timezone(&tz)
+            .naive_local();
+
+        // polygon の base_time（富士山日没）
+        let fuji_sunset = crate::tools::debug_normalize_sunset_naive_datetime(
+            YEAR,
+            MONTH,
+            DAY,
+            dfuji_core::FUJI_LATITUDE,
+            dfuji_core::FUJI_LONGITUDE,
+        )
+        .expect("fuji sunset normalization");
+        // 観測者日没（point の基準）
+        let chiba_sunset = crate::tools::debug_normalize_sunset_naive_datetime(
+            YEAR, MONTH, DAY, CHIBA_LAT, CHIBA_LON,
+        )
+        .expect("chiba sunset normalization");
+
+        let az_band = dfuji_core::AZIMUTH_THRESHOLD + dfuji_core::AZ_FROM_FUJI_PADDING_DEG;
+        let start_offset_seconds = -(dfuji_core::OBSERVATION_OFFSET_HOURS * 60 * 60);
+        let end_offset_seconds = 0_i64;
+        let step_seconds = dfuji_core::CALCULATION_INTERVAL_SECONDS;
+
+        println!("=== Chiba polygon miss diagnosis (BUG-001) ===");
+        println!("date: {YEAR:04}-{MONTH:02}-{DAY:02}");
+        println!("chiba: lat={CHIBA_LAT}, lon={CHIBA_LON}");
+        println!(
+            "az_from_fuji(chiba) = {az_from_fuji_chiba:.6} deg, distance to fuji ≈ {:.1} km",
+            chiba_distance_m / 1000.0
+        );
+        println!("hit_time (point, JST naive) = {hit_time}");
+        println!("fuji_sunset (polygon base_time) = {fuji_sunset}");
+        println!("chiba_sunset (point base_time) = {chiba_sunset}");
+        println!(
+            "polygon time window: [{}, {}]",
+            fuji_sunset + Duration::seconds(start_offset_seconds),
+            fuji_sunset + Duration::seconds(end_offset_seconds)
+        );
+        println!(
+            "hit_time vs polygon window: contained = {}",
+            hit_time >= fuji_sunset + Duration::seconds(start_offset_seconds)
+                && hit_time <= fuji_sunset + Duration::seconds(end_offset_seconds)
+        );
+        println!(
+            "AZIMUTH_THRESHOLD={:.3}  AZ_FROM_FUJI_PADDING_DEG={:.3}  AZ_BIN_WIDTH_DEG={:.3}  ELEVATION_THRESHOLD={:.3}",
+            dfuji_core::AZIMUTH_THRESHOLD,
+            dfuji_core::AZ_FROM_FUJI_PADDING_DEG,
+            dfuji_core::AZ_BIN_WIDTH_DEG,
+            dfuji_core::ELEVATION_THRESHOLD,
+        );
+        println!(
+            "BISECTION_HIGH_DISTANCE = {:.0} m",
+            dfuji_core::BISECTION_HIGH_DISTANCE
+        );
+        println!();
+
+        // 各時刻ステップで polygon の動作を再現し、千葉 az 方向に絞って診断
+        let mut times_in_band: usize = 0;
+        let mut times_filter_passed: usize = 0;
+        let mut max_d_far_passed: f64 = f64::NEG_INFINITY;
+
+        let mut offset_seconds = start_offset_seconds;
+        let mut samples_count: usize = 0;
+        while offset_seconds <= end_offset_seconds {
+            let current_time = fuji_sunset + Duration::seconds(offset_seconds);
+            let center = crate::tools::debug_estimate_center_az_from_fuji_for_time(current_time);
+
+            let in_band = {
+                let d = crate::tools::angular_diff_deg(az_from_fuji_chiba, center);
+                d <= az_band
+            };
+
+            // 千葉 az 方向で d_near / d_far を直接解く（polygon の 9-sample に依らず純粋な評価）
+            let d_near = crate::tools::debug_solve_distance_for_altitude_diff(
+                current_time,
+                az_from_fuji_chiba,
+                dfuji_core::ELEVATION_THRESHOLD,
+            );
+            let d_far = crate::tools::debug_solve_distance_for_altitude_diff(
+                current_time,
+                az_from_fuji_chiba,
+                -dfuji_core::ELEVATION_THRESHOLD,
+            );
+
+            let near_az_diff = d_near.map(|d| {
+                let (lat, lon) = dfuji_geo::calc_destination_point(
+                    dfuji_core::FUJI_LATITUDE,
+                    dfuji_core::FUJI_LONGITUDE,
+                    az_from_fuji_chiba,
+                    d,
+                );
+                crate::tools::debug_observer_az_diff_deg(lat, lon, current_time)
+            });
+            let far_az_diff = d_far.map(|d| {
+                let (lat, lon) = dfuji_geo::calc_destination_point(
+                    dfuji_core::FUJI_LATITUDE,
+                    dfuji_core::FUJI_LONGITUDE,
+                    az_from_fuji_chiba,
+                    d,
+                );
+                crate::tools::debug_observer_az_diff_deg(lat, lon, current_time)
+            });
+
+            let filter_passed = match (near_az_diff, far_az_diff) {
+                (Some(n), Some(f)) => {
+                    n < dfuji_core::AZIMUTH_THRESHOLD && f < dfuji_core::AZIMUTH_THRESHOLD
+                }
+                _ => false,
+            };
+
+            if in_band {
+                times_in_band += 1;
+            }
+            if filter_passed {
+                times_filter_passed += 1;
+                if let Some(d) = d_far
+                    && d > max_d_far_passed
+                {
+                    max_d_far_passed = d;
+                }
+            }
+
+            // 出力する条件: ヒット時刻 ±2分 / in_band=true / filter_passed=true のいずれか
+            let near_hit = (current_time - hit_time).num_seconds().abs() <= 120;
+            if near_hit || in_band || filter_passed {
+                let n_str = d_near
+                    .map(|d| format!("{:.0}m", d))
+                    .unwrap_or("None".to_string());
+                let f_str = d_far
+                    .map(|d| format!("{:.0}m", d))
+                    .unwrap_or("None".to_string());
+                let na_str = near_az_diff
+                    .map(|v| format!("{v:.4}"))
+                    .unwrap_or("-".to_string());
+                let fa_str = far_az_diff
+                    .map(|v| format!("{v:.4}"))
+                    .unwrap_or("-".to_string());
+                println!(
+                    "t={} center_az={:.4} in_band={} d_near={} d_far={} obs_az_diff(near)={} obs_az_diff(far)={} filter_passed={}",
+                    current_time.format("%H:%M:%S"),
+                    center,
+                    in_band,
+                    n_str,
+                    f_str,
+                    na_str,
+                    fa_str,
+                    filter_passed,
+                );
+            }
+
+            samples_count += 1;
+            offset_seconds += step_seconds;
+        }
+
+        println!();
+        println!("=== Summary ===");
+        println!("total time steps: {samples_count}");
+        println!("times where chiba az is within center_az ± {az_band:.2}°: {times_in_band}",);
+        println!(
+            "times where near AND far observer_az_diff < {:.2}°: {times_filter_passed}",
+            dfuji_core::AZIMUTH_THRESHOLD
+        );
+        if max_d_far_passed.is_finite() {
+            println!(
+                "max(d_far) across passing times: {:.1} km   (chiba distance ≈ {:.1} km, reaches chiba: {})",
+                max_d_far_passed / 1000.0,
+                chiba_distance_m / 1000.0,
+                max_d_far_passed >= chiba_distance_m,
+            );
+        } else {
+            println!("max(d_far) across passing times: <none — filter rejected all times>");
+        }
+
+        // 最終的に polygon の出力を生成し、千葉点の内包判定を出す
+        let geojson = crate::polygon(YEAR, MONTH, DAY);
+        let inside = is_point_inside_polygon_geojson(&geojson, CHIBA_LAT, CHIBA_LON);
+        println!("polygon inside_polygon(chiba) = {inside}");
     }
 
     /// consistency_among_functions

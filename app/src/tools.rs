@@ -161,35 +161,18 @@ fn solve_distance_for_altitude_diff(
     Some((low + high) / 2.0)
 }
 
-/// solve_distance_for_altitude_match
-/// 指定した観測地点からの距離における富士山と太陽の高度を一致させる距離を二分法で求める関数
-/// # Arguments
-/// * `current_time` - 現在の日時（`chrono::NaiveDateTime`）
-/// * `az_from_fuji_deg` - 富士山から見た方位角（度）
-/// # Returns
-/// * 観測地点から目的地までの距離（メートル）
-fn solve_distance_for_altitude_match(
-    current_time: chrono::NaiveDateTime,
-    az_from_fuji_deg: f64,
-) -> Option<f64> {
-    solve_distance_for_altitude_diff(current_time, az_from_fuji_deg, 0.0)
-}
-
-/// 二分法や固定点反復の最大反復回数の定数定義
-const FIXED_POINT_MAX_ITER: usize = 10;
-
-/// 収束判定の閾値（度単位）
-const AZ_CONVERGENCE_THRESHOLD_DEG: f64 = 1e-6;
-
 /// estimate_center_az_from_fuji_for_time
-/// 指定した日時における、富士山から見た中心方位角を推定する関数
+/// 指定した日時における、ダイヤモンド富士の中心方向（富士山から見た方位）を返す関数。
+///
+/// 太陽は実質無限遠にあるため、観測者位置移動による視差は < 0.001° と無視でき、
+/// 富士山地点における太陽方位の真逆方向を「観測者から見ると太陽が富士山頂に重なりうる」
+/// 中心方向としてそのまま採用してよい。
+///
 /// # Arguments
-/// * `current_time` - 現在の日時（`chrono::NaiveDateTime`）
+/// * `current_time` - 評価時刻（`chrono::NaiveDateTime`）
 /// # Returns
-/// * 富士山から見た中心方位角（度）
-fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) -> Option<f64> {
-    // 「観測地点依存の太陽方位」を吸収するための固定点反復。
-    // 反復: az := sun_az(observer_at(az, alt_match)) + 180
+/// * 富士山から見た中心方位角（度、0〜360）
+fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) -> f64 {
     let (sun_az_deg_fuji, _) = sun::calc_sun_az_and_alt(
         current_time.year() as i16,
         current_time.month() as u8,
@@ -201,35 +184,7 @@ fn estimate_center_az_from_fuji_for_time(current_time: chrono::NaiveDateTime) ->
         FUJI_LATITUDE,
         FUJI_LONGITUDE,
     );
-
-    let mut az_from_fuji_deg = (sun_az_deg_fuji + 180.0).rem_euclid(360.0);
-    for _ in 0..FIXED_POINT_MAX_ITER {
-        let distance_m = solve_distance_for_altitude_match(current_time, az_from_fuji_deg)?;
-        let (obs_lat, obs_lon) = geo::calc_destination_point(
-            FUJI_LATITUDE,
-            FUJI_LONGITUDE,
-            az_from_fuji_deg,
-            distance_m,
-        );
-        let (sun_az_deg, _) = sun::calc_sun_az_and_alt(
-            current_time.year() as i16,
-            current_time.month() as u8,
-            current_time.day() as u8,
-            current_time.hour() as u8,
-            current_time.minute() as u8,
-            current_time.second() as f64,
-            9.0,
-            obs_lat,
-            obs_lon,
-        );
-        let next = (sun_az_deg + 180.0).rem_euclid(360.0);
-        if angular_diff_deg(next, az_from_fuji_deg) < AZ_CONVERGENCE_THRESHOLD_DEG {
-            az_from_fuji_deg = next;
-            break;
-        }
-        az_from_fuji_deg = next;
-    }
-    Some(az_from_fuji_deg)
+    (sun_az_deg_fuji + 180.0).rem_euclid(360.0)
 }
 
 /// observer_az_diff_deg
@@ -262,11 +217,44 @@ fn observer_az_diff_deg(obs_lat: f64, obs_lon: f64, current_time: chrono::NaiveD
     angular_diff_deg(sun_az_deg, fuji_az_deg)
 }
 
+/// `estimate_center_az_from_fuji_for_time` の診断テスト用シム。
 #[cfg(test)]
 pub(crate) fn debug_estimate_center_az_from_fuji_for_time(
     current_time: chrono::NaiveDateTime,
-) -> Option<f64> {
+) -> f64 {
     estimate_center_az_from_fuji_for_time(current_time)
+}
+
+/// `solve_distance_for_altitude_diff` の診断テスト用シム。
+#[cfg(test)]
+pub(crate) fn debug_solve_distance_for_altitude_diff(
+    current_time: chrono::NaiveDateTime,
+    az_from_fuji_deg: f64,
+    target_altitude_diff_deg: f64,
+) -> Option<f64> {
+    solve_distance_for_altitude_diff(current_time, az_from_fuji_deg, target_altitude_diff_deg)
+}
+
+/// `observer_az_diff_deg` の診断テスト用シム。
+#[cfg(test)]
+pub(crate) fn debug_observer_az_diff_deg(
+    obs_lat: f64,
+    obs_lon: f64,
+    current_time: chrono::NaiveDateTime,
+) -> f64 {
+    observer_az_diff_deg(obs_lat, obs_lon, current_time)
+}
+
+/// `normalize_sunset_naive_datetime` の診断テスト用シム。
+#[cfg(test)]
+pub(crate) fn debug_normalize_sunset_naive_datetime(
+    year: i16,
+    month: u8,
+    day: u8,
+    lat: f64,
+    lon: f64,
+) -> Option<chrono::NaiveDateTime> {
+    normalize_sunset_naive_datetime(year, month, day, lat, lon)
 }
 
 /// angular_diff_deg
@@ -367,10 +355,7 @@ pub(crate) fn detect_alignment_for_location(
     const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
     let total_seconds = sunset_time.0 * 3600 + sunset_time.1 * 60 + sunset_time.2;
     let day_offset = total_seconds.div_euclid(SECONDS_PER_DAY);
-    let mut seconds_in_day = total_seconds.rem_euclid(SECONDS_PER_DAY);
-    if seconds_in_day < 0 {
-        seconds_in_day += SECONDS_PER_DAY;
-    }
+    let seconds_in_day = total_seconds.rem_euclid(SECONDS_PER_DAY);
 
     let hour = (seconds_in_day / 3600) as u32;
     let minute = ((seconds_in_day % 3600) / 60) as u32;
@@ -615,11 +600,7 @@ pub(crate) fn create_lonlat_vec(year: i16, month: u8, day: u8) -> Vec<(f64, f64)
             continue;
         };
 
-        let Some(center_az_from_fuji_deg) = estimate_center_az_from_fuji_for_time(current_time)
-        else {
-            offset_seconds += step_seconds;
-            continue;
-        };
+        let center_az_from_fuji_deg = estimate_center_az_from_fuji_for_time(current_time);
 
         for i in 0..AZ_SAMPLES {
             let t = if AZ_SAMPLES == 1 {
