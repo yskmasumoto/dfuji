@@ -4,24 +4,37 @@
 
 ## [Unreleased]
 
+## [0.1.0-beta.4] - 2026-04-29
+
+### Changed
+
+- `estimate_center_az_from_fuji_for_time` の戻り値を `Option<f64>` から `f64` に変更（後述 BUG-001 修正で失敗ケースが消えたため）。不要になった内部関数 `solve_distance_for_altitude_match` と定数 `FIXED_POINT_MAX_ITER` / `AZ_CONVERGENCE_THRESHOLD_DEG` を削除
+
+### Added
+
+- BUG-001 回帰テストとして、富士山から ~156 km 東の千葉点 (35.66, 140.41) / 2026-02-24 を `multiple_point_hit_locations_are_inside_polygon` に追加
+
+### Fixed
+
+- **BUG-001**: `polygon` が富士山から遠い東方面（千葉県本土以東）に伸びない症状を修正。`estimate_center_az_from_fuji_for_time` の固定点反復が `sun_az_from_observer + 180° = az_from_fuji` の自己一致点に収束する設計だったが、これは球面測地の forward bearing と back bearing のズレを **逆符号** で積み上げる動作であり、観測距離が伸びるほど center_az が真値から離れていた（d=156 km で約 1° のズレ、`AZ_FROM_FUJI_PADDING_DEG = 0.2°` ベースのサンプリング帯から外れる）。太陽は実質無限遠（1 AU）にあり観測者位置による視差は < 0.001° のため、固定点反復を撤廃して「富士山地点の太陽方位の真逆方向」を直接採用する形に簡素化した
+
+## [0.1.0-beta.3] - 2026-04-28
+
 ### Changed
 
 - `polygon` の出力頂点数を大幅削減（典型値 ~1500 → ~180）。アルゴリズムを **方位ビン集約** 方式に切替: 富士山視点方位を `AZ_BIN_WIDTH_DEG` (0.2°) 刻みのビンに振り分け、各ビン代表方位で全時刻を通じた近端最小・遠端最大の境界点を採用する形に変更。時刻シフト由来のギザギザが原理的に消え、リングが滑らかな envelope になる
 - `point ⊆ polygon` の不変条件は維持（ビン内全時刻の包絡を取るため、リングが外側に広がる方向への集約のみ発生）
 - ビン割り当て anchor を「最初のサンプル方位」から「全サンプル方位の循環平均」に変更し、`samples[0]` 依存の非決定性を排除
 - 同一時刻の重複登録を `BTreeSet` で排除し、集約フェーズの二分法呼び出しを削減
-- `estimate_center_az_from_fuji_for_time` の戻り値を `Option<f64>` から `f64` に変更（後述 BUG-001 修正で失敗ケースが消えたため）。不要になった内部関数 `solve_distance_for_altitude_match` と定数 `FIXED_POINT_MAX_ITER` / `AZ_CONVERGENCE_THRESHOLD_DEG` を削除
 
 ### Added
 
 - `dfuji_core::AZ_BIN_WIDTH_DEG` / `dfuji_core::AZ_FROM_FUJI_PADDING_DEG` を `core` クレートに追加（旧 `tools.rs` 内ローカル定数を昇格）
-- BUG-001 回帰テストとして、富士山から ~156 km 東の千葉点 (35.66, 140.41) / 2026-02-24 を `multiple_point_hit_locations_are_inside_polygon` に追加
 
 ### Fixed
 
 - 集約フェーズで `d_near >= d_far` となる単調性逆転サンプルを検出し棄却するガードを追加（リングのトポロジー破綻を防止）
 - ビン全時刻で境界点解なしの場合に `tracing::debug` でログ出力するようにし、リングの「穴」を可視化
-- **BUG-001**: `polygon` が富士山から遠い東方面（千葉県本土以東）に伸びない症状を修正。`estimate_center_az_from_fuji_for_time` の固定点反復が `sun_az_from_observer + 180° = az_from_fuji` の自己一致点に収束する設計だったが、これは球面測地の forward bearing と back bearing のズレを **逆符号** で積み上げる動作であり、観測距離が伸びるほど center_az が真値から離れていた（d=156 km で約 1° のズレ、`AZ_FROM_FUJI_PADDING_DEG = 0.2°` ベースのサンプリング帯から外れる）。太陽は実質無限遠（1 AU）にあり観測者位置による視差は < 0.001° のため、固定点反復を撤廃して「富士山地点の太陽方位の真逆方向」を直接採用する形に簡素化した
 
 ### Notes
 
@@ -43,7 +56,7 @@
 
 ### Fixed
 
-- 富士山視点の方位角サンプリングが 360°/0° 境界を跨ぐ稀な日付で、polygon リングが自己交差する潜在バグを修正（anchor 基準の相対角でソート）
+- 富士山視点の方位角サンプリングが 360°/0° 境界を跨ぐ稀な日付で、polygon リングが自己交差する潜在バグを修正(anchor 基準の相対角でソート)
 
 ### Notes
 
@@ -75,6 +88,8 @@
 - リリース運用スクリプト `scripts/version_update.sh` / `scripts/release.sh`
 - CI ワークフロー（fmt-check / clippy `-D warnings` / test / build）
 
-[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.2...HEAD
+[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.4...HEAD
+[0.1.0-beta.4]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.4
+[0.1.0-beta.3]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.1
