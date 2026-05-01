@@ -51,7 +51,10 @@ pub const SUN_APPARENT_RADIUS: f64 = 0.2666;
 pub const BISECTION_LOW_DISTANCE: f64 = 100.0;
 
 /// 最大距離（メートル）
-pub const BISECTION_HIGH_DISTANCE: f64 = 200_000.0;
+///
+/// 観測者標高 0 m における富士山頂の地平線下没距離（約 219 km）を上回る値を設定し、
+/// 銚子など ~195 km 以遠の遠隔地でも `d_far` 境界の二分法が解けるようにする。
+pub const BISECTION_HIGH_DISTANCE: f64 = 250_000.0;
 
 /// 最大反復回数
 pub const BISECTION_MAX_ITER: usize = 100;

@@ -352,6 +352,15 @@ mod tests {
                 day: 24,
                 points: &[(35.66, 140.41)],
             },
+            // IMPROVE-002 回帰: 富士山から ~195 km の銚子点。`BISECTION_HIGH_DISTANCE`
+            // が 200 km 上限のままだと `d_far` の二分法が解けず、銚子方面の方位帯が
+            // polygon から落ちる症状を防ぐ。
+            Case {
+                year: 2026,
+                month: 2,
+                day: 24,
+                points: &[(35.73, 140.83)],
+            },
         ];
 
         for case in cases {

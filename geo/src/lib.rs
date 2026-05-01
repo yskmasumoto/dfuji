@@ -136,7 +136,7 @@ pub fn calc_destination_point(
 pub fn solver_distance_for_altitude(target_altitude: f64, obs_azimuth: f64) -> Option<f64> {
     // 探索範囲の初期化
     let low = BISECTION_LOW_DISTANCE; // 100 m
-    let high = BISECTION_HIGH_DISTANCE; // 200 km
+    let high = BISECTION_HIGH_DISTANCE; // 250 km
 
     // 二分法による探索
     bisection_method(target_altitude, obs_azimuth, low, high)
