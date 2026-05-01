@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.1.0-beta.5] - 2026-05-01
+
+### Changed
+
+- `BISECTION_HIGH_DISTANCE` を 200 km → 250 km に拡張（IMPROVE-002）。観測者標高 0 m における富士山頂の地平線下没距離は約 219 km であり、従来の 200 km 上限では銚子（富士山から ~195 km）など 195 km 以遠の方位帯で `d_far` の二分法が解けず polygon リングから落ちていた。標高 API（IMPROVE-001）は導入せず、まずは現実的にカバー範囲を広げる最小変更にとどめる
+
+### Added
+
+- IMPROVE-002 回帰テストとして、富士山から ~195 km 東の銚子点 (35.73, 140.83) / 2026-02-24 を `multiple_point_hit_locations_are_inside_polygon` に追加
+
 ## [0.1.0-beta.4] - 2026-04-29
 
 ### Changed
@@ -88,7 +98,8 @@
 - リリース運用スクリプト `scripts/version_update.sh` / `scripts/release.sh`
 - CI ワークフロー（fmt-check / clippy `-D warnings` / test / build）
 
-[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.4...HEAD
+[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.5...HEAD
+[0.1.0-beta.5]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.5
 [0.1.0-beta.4]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.2

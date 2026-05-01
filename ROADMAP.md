@@ -23,14 +23,6 @@ dfuji プロジェクトの今後の対応方針・既知の課題・改善候�
 - もしくはオーバーロード関数を別名で提供
 - `polygon` 用には DEM (Digital Elevation Model) の組み込みが必要だが、これは大幅な依存追加なのでオプション機能で別レイヤとする
 
-### IMPROVE-002: `BISECTION_HIGH_DISTANCE` の 200 km 上限見直し
-
-`core/src/lib.rs` の `BISECTION_HIGH_DISTANCE = 200_000 m` が二分法の上限となっており、富士山から ~195 km 以遠の地点で `d_far`（`fuji_alt - sun_alt = -0.2°` 境界）が解けず、その方位帯のサンプルが dropped され polygon に含まれない。
-
-**具体例（2026-02-24）:** 銚子 (35.73, 140.83) は富士山から 195.1 km、`point()` ではヒットする（az_diff=0.118°, alt_diff=0.138°）が `polygon()` に内包されない。
-
-**対応:** 観測者標高 0 m の地平線下没距離が ~219 km なので、固定値を 220 km 程度まで拡張するだけで現実的にカバー範囲が広がる。標高 API（IMPROVE-001）は本当に必要になったときに別途検討する温度感。
-
 ### IMPROVE-003: `bin_times` と `bins` の二段階 BTreeMap 一本化
 
 集約処理で `BTreeMap<i32, BTreeSet<NaiveDateTime>>` と `BTreeMap<i32, BinEdge>` を別々に構築している。`BinEntry { times, near, far }` 等に統合すれば構造がよりシンプルに。機能的には問題なし。
