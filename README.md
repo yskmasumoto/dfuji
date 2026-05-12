@@ -34,7 +34,7 @@ dfuji/
 
 ## ビルド
 
-Rust 1.91.1 以上が必要（`Cargo.toml` の `rust-version` で最低バージョンを宣言）。
+Rust 1.91.1 以上が必要（`Cargo.toml` の `rust-version` で最低バージョンを宣言）。stable toolchain で OK。
 
 ```sh
 cargo build --release

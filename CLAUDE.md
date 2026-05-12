@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 開発コマンド
 
-ツールチェーンは `rust-toolchain.toml` で **1.91.1 に固定**。`rust-analyzer-preview` / `rustfmt` / `clippy` が同梱される。
+MSRV は `Cargo.toml` の `[workspace.package].rust-version = "1.91.1"` で宣言。stable toolchain で開発可（CI は `dtolnay/rust-toolchain@stable` を使用）。
 
 ```bash
 # ビルド
