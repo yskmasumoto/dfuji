@@ -241,7 +241,6 @@ dependencies = [
  "dfuji-sun",
  "serde_json",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
