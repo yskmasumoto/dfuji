@@ -10,5 +10,5 @@ repository.workspace = true
 
 [dependencies]
 dfuji-core = { path = "../core" }
-geographiclib-rs = "^0.2.5"
+geographiclib-rs = "^0.2.7"
 geojson = "0.24.2"
