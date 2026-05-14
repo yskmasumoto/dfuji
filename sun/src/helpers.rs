@@ -8,27 +8,7 @@ use astro::*;
 ///
 /// # 戻り値
 /// - UTC 基準の十進日。
-///
-/// # 例
-/// ```rust
-/// use astro::time;
-/// use dfuji_sun::my_decimal_day;
-///
-/// let day = time::DayOfMonth {
-///     day: 21,
-///     hr: 11,
-///     min: 45,
-///     sec: 0.0,
-///     time_zone: 9.0,
-/// };
-/// let decimal_day = my_decimal_day(&day);
-/// let expected = 21.0
-///     + 11.0 / 24.0
-///     + 45.0 / (24.0 * 60.0)
-///     - 9.0 / 24.0;
-/// assert!((decimal_day - expected).abs() < 1e-9);
-/// ```
-pub fn my_decimal_day(day: &time::DayOfMonth) -> f64 {
+pub(crate) fn my_decimal_day(day: &time::DayOfMonth) -> f64 {
     let day_fraction_local: f64 =
         (day.hr as f64) / 24.0 + (day.min as f64) / (24.0 * 60.0) + day.sec / (24.0 * 60.0 * 60.0);
     let local_decimal_day: f64 = (day.day as f64) + day_fraction_local;
@@ -75,4 +55,25 @@ pub(crate) fn calc_nut_and_oblq(julian_day: f64) -> (f64, f64) {
     let true_obliquity = mean_oblq + nutation_oblq;
 
     (nutation_long, true_obliquity)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `my_decimal_day` が `time::DayOfMonth` を UTC 基準の十進日へ変換する。
+    /// `astro::time::decimal_day` 由来の不整合を踏まえた自前実装の挙動を固定する。
+    #[test]
+    fn my_decimal_day_converts_local_time_to_utc_decimal_day() {
+        let day = time::DayOfMonth {
+            day: 21,
+            hr: 11,
+            min: 45,
+            sec: 0.0,
+            time_zone: 9.0,
+        };
+        let decimal_day = my_decimal_day(&day);
+        let expected = 21.0 + 11.0 / 24.0 + 45.0 / (24.0 * 60.0) - 9.0 / 24.0;
+        assert!((decimal_day - expected).abs() < 1e-9);
+    }
 }

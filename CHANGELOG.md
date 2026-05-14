@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.1.0-beta.6] - 2026-05-14
+
+Phase 1（掃除と公開境界の調整）の成果をまとめる。詳細は `ROADMAP.md` の「改修フェーズ」セクションを参照。
+
+### Removed
+
+- 旧 `app/src/main.rs`（井の頭公園座標ハードコードの初期テスト用バイナリ）と `app/Cargo.toml` の `tracing-subscriber` 依存（IMPROVE-009）
+- `dfuji_geo::solver_distance_for_altitude` / 内部 `bisection_method`。本番経路の `tools::solve_distance_for_altitude_diff` に一本化済みで死 API だったため。連動して唯一の利用者だった `#[ignore]` テスト `debug_polygon_point_count`（BUG-001 修正前の調査用、beta.4 で解消済み）も削除（IMPROVE-010）
+- `wasm/` / `dfuji/target/` のローカル残骸ディレクトリ（git 追跡外、IMPROVE-011）
+- `dfuji_app::geo` / `dfuji_app::sun` の再公開（`pub use dfuji_geo as geo;` / `pub use dfuji_sun as sun;`）。利用者がなく後方互換義務もないため撤回（IMPROVE-018）
+
+### Changed
+
+- `sun::my_decimal_day` の `pub use` を撤回し関数自体も `pub(crate)` に降格。外部公開を維持する正当性がないため。doc test は `pub(crate)` 化により実行されなくなるため `helpers` モジュール内の unit test に移設し、`astro::time::decimal_day` との差異を固定するリグレッション検査を維持（IMPROVE-016）
+- `app/src/lib.rs` の `pub mod tools;` を `pub(crate) mod tools;` に降格。外部から `dfuji_app::tools::*` が参照可能だった状態を是正（IMPROVE-017）
+- `tracing` / `tracing-subscriber` をワークスペース直下の `[workspace.dependencies]` で一元管理に変更（`app` / `cli` 間で `^0.1.43`/`^0.1.41`、`^0.3.22`/`^0.3.20` のズレを解消。採用は新しい方）（IMPROVE-023）
+
+### Added
+
+- `sun::helpers` モジュール内に `my_decimal_day` の unit test を追加（doc test からの移設、IMPROVE-016）
+
 ## [0.1.0-beta.5] - 2026-05-01
 
 ### Changed
@@ -98,7 +119,8 @@
 - リリース運用スクリプト `scripts/version_update.sh` / `scripts/release.sh`
 - CI ワークフロー（fmt-check / clippy `-D warnings` / test / build）
 
-[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.5...HEAD
+[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.6...HEAD
+[0.1.0-beta.6]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.6
 [0.1.0-beta.5]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.5
 [0.1.0-beta.4]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.3

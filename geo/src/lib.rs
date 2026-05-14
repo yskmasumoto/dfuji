@@ -7,10 +7,7 @@
 //! - ECEF座標系への変換
 //! - WGS84楕円体を用いた測地計算
 
-use dfuji_core::{
-    BISECTION_HIGH_DISTANCE, BISECTION_LOW_DISTANCE, BISECTION_MAX_ITER, ELEVATION_THRESHOLD,
-    FUJI_ALTITUDE, FUJI_LATITUDE, FUJI_LONGITUDE, WGS84_A, WGS84_E2,
-};
+use dfuji_core::{WGS84_A, WGS84_E2};
 use geographiclib_rs::{DirectGeodesic, Geodesic, InverseGeodesic};
 use geojson::{Feature, FeatureCollection, Geometry, Value};
 
@@ -121,79 +118,6 @@ pub fn calc_destination_point(
     let geod = Geodesic::wgs84();
     let (dest_lat, dest_lon, _) = geod.direct(start_lat, start_lon, azimuth, distance);
     (dest_lat, dest_lon)
-}
-
-/// # solver_distance_for_altitude
-/// ## 概要
-/// 指定した高度角と方位角に基づいて、観測地点から目的地までの距離を二分法で求める関数
-/// # Arguments
-/// * `target_altitude` - ある時刻における太陽の高度角（度）
-/// * `obs_azimuth` - 観測地点から目的地への方位角（度）, obs_azimuthには太陽の反対側の方位角を指定すること
-/// ```rust
-/// let sun_azimuth = 150.0; // ex) 太陽の方位角
-/// let obs_azimuth = (sun_azimuth + 180.0) % 360.0;
-/// ```
-pub fn solver_distance_for_altitude(target_altitude: f64, obs_azimuth: f64) -> Option<f64> {
-    // 探索範囲の初期化
-    let low = BISECTION_LOW_DISTANCE; // 100 m
-    let high = BISECTION_HIGH_DISTANCE; // 250 km
-
-    // 二分法による探索
-    bisection_method(target_altitude, obs_azimuth, low, high)
-}
-
-/// # bisection_method
-/// ## 概要
-/// 二分法を用いて、指定した高度角に基づいて目的地までの距離を求める関数
-/// # Arguments
-/// * `target_altitude` - ある時刻における太陽の高度角（度）
-/// * `obs_azimuth` - 観測地点から目的地への方位角（度）
-/// * `low` - 探索範囲の下限（メートル）
-/// * `high` - 探索範囲の上限（メートル）
-/// # Returns
-/// * `Option<f64>` - 観測地点から目的地までの距離（メートル）
-fn bisection_method(
-    target_altitude: f64,
-    obs_azimuth: f64,
-    mut low: f64,
-    mut high: f64,
-) -> Option<f64> {
-    const TOLERANCE: f64 = ELEVATION_THRESHOLD; // 許容誤差（度）
-    const MAX_ITER: usize = BISECTION_MAX_ITER; // 最大反復回数
-
-    // 二分法の反復処理
-    for _ in 0..MAX_ITER {
-        // 中点を計算
-        let mid = (low + high) / 2.0;
-
-        // 中点に対応する目的地の緯度・経度を計算
-        let (dest_lat, dest_lon) =
-            calc_destination_point(FUJI_LATITUDE, FUJI_LONGITUDE, obs_azimuth, mid);
-
-        // 中点に対応する高度角を計算
-        let calculated_altitude = calc_altitude(
-            dest_lat,
-            dest_lon,
-            0.0,
-            FUJI_LATITUDE,
-            FUJI_LONGITUDE,
-            FUJI_ALTITUDE,
-        );
-
-        // 目的の高度角に近いかどうかをチェックして、閾値内であれば解を返す
-        if (calculated_altitude - target_altitude).abs() < TOLERANCE {
-            return Some(mid);
-        }
-
-        // 探索範囲を更新
-        if calculated_altitude < target_altitude {
-            high = mid;
-        } else {
-            low = mid;
-        }
-    }
-
-    None // 解が見つからなかった場合
 }
 
 /// # vec2geojson

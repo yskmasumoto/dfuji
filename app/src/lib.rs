@@ -8,10 +8,6 @@
 //! - 緯度経度範囲での候補地点探索 (`range`)
 
 pub mod app;
-pub mod tools;
-
-// Re-export the geo and sun crates for convenience
-pub use dfuji_geo as geo;
-pub use dfuji_sun as sun;
+pub(crate) mod tools;
 
 pub use app::{Alignment, RangeMatch, point, polygon, range};
