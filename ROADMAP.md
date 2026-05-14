@@ -146,16 +146,17 @@ let end_offset_seconds = 0;                                         // 富士山
 
 ## 完了済み
 
-CHANGELOG の `[Unreleased]` セクション、および各リリースの履歴を参照。
+CHANGELOG の各リリースの履歴を参照。
 
 - 0.1.0-beta.2: polygon 精度改善（凸包 → envelope リング、二分法収束厳格化）
 - 0.1.0-beta.3: polygon 頂点削減（envelope リング → 方位ビン集約、~1500 → ~180 頂点）
 - 0.1.0-beta.4: BUG-001 修正（`estimate_center_az_from_fuji_for_time` の固定点反復が球面測地補正を逆方向に積み上げ、富士山から遠い東方向の polygon が縮退する症状）
 - 0.1.0-beta.5: `BISECTION_HIGH_DISTANCE` を 200 km → 250 km に拡張（IMPROVE-002）。銚子（富士山から ~195 km）の `d_far` が解けるように
+- 0.1.0-beta.6: Phase 1（掃除と公開境界の調整）。死 API・残骸ディレクトリ・旧バイナリの削除、公開境界の縮小、`tracing`/`tracing-subscriber` の workspace 一元管理（IMPROVE-009/010/011/016/017/018/023）
 
 ### Phase 1 完了 (2026-05-14)
 
-掃除と公開境界の調整。次リリースの `[Unreleased]` に含まれる。
+掃除と公開境界の調整。`0.1.0-beta.6` に含まれる。
 
 - IMPROVE-009: 旧 `app/src/main.rs` と `app/Cargo.toml` の `tracing-subscriber` 依存を削除
 - IMPROVE-010: `geo::solver_distance_for_altitude` / `bisection_method`（死 API）と、それを唯一参照していた `#[ignore]` テスト `debug_polygon_point_count` を削除

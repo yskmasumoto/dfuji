@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.1.0-beta.6] - 2026-05-14
+
 Phase 1（掃除と公開境界の調整）の成果をまとめる。詳細は `ROADMAP.md` の「改修フェーズ」セクションを参照。
 
 ### Removed
@@ -117,7 +119,8 @@ Phase 1（掃除と公開境界の調整）の成果をまとめる。詳細は 
 - リリース運用スクリプト `scripts/version_update.sh` / `scripts/release.sh`
 - CI ワークフロー（fmt-check / clippy `-D warnings` / test / build）
 
-[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.5...HEAD
+[Unreleased]: https://github.com/yskmasumoto/dfuji/compare/v0.1.0-beta.6...HEAD
+[0.1.0-beta.6]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.6
 [0.1.0-beta.5]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.5
 [0.1.0-beta.4]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/yskmasumoto/dfuji/releases/tag/v0.1.0-beta.3
