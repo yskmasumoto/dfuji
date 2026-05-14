@@ -19,8 +19,6 @@ authors = ["yskmasumoto"]
 license = "MIT"
 repository = "https://github.com/yskmasumoto/dfuji"
 
-# ワークスペース全体で共有する依存バージョン。
-# 各メンバーの Cargo.toml では `*.workspace = true` で継承する。
 [workspace.dependencies]
 tracing = "^0.1.43"
 tracing-subscriber = { version = "^0.3.22", features = ["fmt", "env-filter"] }
